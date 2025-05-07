@@ -1,0 +1,32 @@
+{
+    "transcription": {
+        "beam_size": 5,
+        "compute_type": "float16",
+        "condition_on_previous_text": true,
+        "cpu_threads": 4,
+        "device": "auto",
+        "model_name": "tiny",
+        "model_path": "C:/Users/Jorkey/AppData/Local/FasterVox/models",
+        "no_speech_threshold": 0.6,
+        "num_workers": 1,
+        "punctuation": false,
+        "task": "transcribe",
+        "temperature": 0.0,
+        "vad_filter": true,
+        "word_timestamps": true
+    },
+    "output": {
+        "default_format": "srt",
+        "default_language": "auto",
+        "output_directory": ""
+    },
+    "general": {
+        "language": "zh_CN",
+        "last_output_dir": "C:\\Users\\Jorkey\\Documents",
+        "theme": "dark"
+    },
+    "QFluentWidgets": {
+        "ThemeColor": "#ff009faa",
+        "ThemeMode": "Dark"
+    }
+}

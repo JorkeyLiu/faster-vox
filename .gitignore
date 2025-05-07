@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Translations
+*.mo
+*.pot
+
+# PEP 582; used by PDM, PEP 582 only
+__pypackages__/
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# VS Code settings
+.vscode/
+
+# Cursor settings
+.cursor/
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# roo code
+.roo
+.roomodes
+
+prompt.json
+.git.bk
