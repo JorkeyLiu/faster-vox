@@ -12,6 +12,8 @@ import time
 from PySide6.QtCore import Qt
 from qfluentwidgets import TextBrowser
 from PySide6.QtGui import QTextCursor
+from dependency_injector.wiring import Provide, inject
+from core.containers import AppContainer
 
 from core.models.config import Language
 from core.events.event_types import EventTypes, TranscriptionStartedEvent
@@ -22,12 +24,18 @@ from core.events import event_bus
 class TranscriptViewer:
     """转录查看器，负责管理转录文本的显示"""
     
-    def __init__(self, text_browser: TextBrowser):
+    @inject
+    def __init__(self,
+                 text_browser: TextBrowser,
+                 translator: callable = Provide[AppContainer.translation_function]
+                 ):
         """初始化转录查看器
         
         Args:
             text_browser: 文本浏览器控件实例
+            translator: 翻译函数
         """
+        self._ = translator # 赋值翻译函数
         self.text_browser = text_browser
 
         # 仅允许接收键盘焦点以支持滚动，但不允许鼠标选择
@@ -55,11 +63,12 @@ class TranscriptViewer:
             event: 转录错误事件数据
         """
         # 显示错误信息
-        error_message = f"转录失败: {event.error}"
+        # 根据指示，后台日志不翻译，但此处的错误信息会显示在UI的日志区域，所以需要翻译
+        error_message = self._("转录失败: {error}").format(error=event.error)
         if hasattr(event, 'details') and event.details:
             # 如果有详细信息，添加到错误消息中
             if isinstance(event.details, dict) and 'source' in event.details:
-                error_message += f" (来源: {event.details['source']})"
+                error_message += self._(" (来源: {source})").format(source=event.details['source'])
         
         # 添加错误消息到转录日志
         self.add_error_message(error_message)
@@ -75,23 +84,30 @@ class TranscriptViewer:
         
         # 语言显示
         language_str = params.language or "auto"
-        language_display = Language.display_name(language_str)
-        task_display = "翻译" if params.task == "translate" else "转录"
+        # language_display = Language.display_name(language_str) # 旧方式
+        # 假设 Language 枚举的 value 是 "auto", "zh_CN", "en" 等
+        lang_translation_key = f"language_{language_str.lower()}"
+        language_display = self._(lang_translation_key) if language_str != "auto" else self._("language_auto")
+
+        task_display = self._("翻译") if params.task == "translate" else self._("转录")
         
         # 基本信息
-        # start_info = f"<span style='color:#888888;'>[{current_time}]</span> <span style='color:#888888;'>开始转录处理</span>"
+        # start_info = f"<span style='color:#888888;'>[{current_time}]</span> <span style='color:#888888;'>{self._('开始转录处理')}</span>"
         # self.text_browser.append(start_info)
         
         # 基本参数
-        basic_params = f"<span style='color:#888888;'>[{current_time}]</span> <span style='color:#888888;'>基本参数: 模型={params.model_name}, 语言={language_display}, 任务={task_display}, 输出格式={params.output_format}</span>"
+        basic_params_text = self._("基本参数: 模型={model_name}, 语言={language_display}, 任务={task_display}, 输出格式={output_format}")
+        basic_params = f"<span style='color:#888888;'>[{current_time}]</span> <span style='color:#888888;'>{basic_params_text.format(model_name=params.model_name, language_display=language_display, task_display=task_display, output_format=params.output_format)}</span>"
         self.text_browser.append(basic_params)
         
         # 高级参数
-        advanced_params = f"<span style='color:#888888;'>[{current_time}]</span> <span style='color:#888888;'>高级参数: 波束大小={params.beam_size}, VAD过滤={params.vad_filter}, 单词时间戳={params.word_timestamps}, 标点符号={params.include_punctuation}</span>"
+        advanced_params_text = self._("高级参数: 波束大小={beam_size}, VAD过滤={vad_filter}, 单词时间戳={word_timestamps}, 标点符号={include_punctuation}")
+        advanced_params = f"<span style='color:#888888;'>[{current_time}]</span> <span style='color:#888888;'>{advanced_params_text.format(beam_size=params.beam_size, vad_filter=params.vad_filter, word_timestamps=params.word_timestamps, include_punctuation=params.include_punctuation)}</span>"
         self.text_browser.append(advanced_params)
         
         # 技术参数
-        tech_params = f"<span style='color:#888888;'>[{current_time}]</span> <span style='color:#888888;'>技术参数: 转录设备={params.device}, 计算精度={params.compute_type}, 温度={params.temperature}, 条件文本={params.condition_on_previous_text}, 无语音阈值={params.no_speech_threshold}</span>"
+        tech_params_text = self._("技术参数: 转录设备={device}, 计算精度={compute_type}, 温度={temperature}, 条件文本={condition_on_previous_text}, 无语音阈值={no_speech_threshold}")
+        tech_params = f"<span style='color:#888888;'>[{current_time}]</span> <span style='color:#888888;'>{tech_params_text.format(device=params.device, compute_type=params.compute_type, temperature=params.temperature, condition_on_previous_text=params.condition_on_previous_text, no_speech_threshold=params.no_speech_threshold)}</span>"
         self.text_browser.append(tech_params)
         
     def add_transcript_text(self, text: str, start_time: Optional[float] = None, end_time: Optional[float] = None):
@@ -107,21 +123,34 @@ class TranscriptViewer:
         current_time = datetime.datetime.now().strftime("%H:%M:%S")
         
         # 检查是否是初始消息或音频信息
+        # 这些特定的字符串需要被翻译，或者使用更通用的键
+        # 为简化，我们假设这些字符串会作为 msgid 直接出现在 .po 文件中
+        translated_text = text # 默认不翻译，除非是特定消息
+        if "正在加载音频并准备转录" in text:
+            translated_text = self._("正在加载音频并准备转录")
+        elif "已从视频中提取音频" in text:
+            translated_text = self._("已从视频中提取音频")
+        elif "正在加载模型并处理音频" in text:
+            translated_text = self._("正在加载模型并处理音频")
+        elif "音频信息:" in text: # "音频信息:" 本身也可能需要翻译
+            translated_text = text.replace("音频信息:", self._("音频信息:"))
+
+
         is_initial_message = (
-            "正在加载音频并准备转录" in text or 
-            "已从视频中提取音频" in text or 
-            "正在加载模型并处理音频" in text or 
-            "音频信息:" in text
+            self._("正在加载音频并准备转录") in translated_text or
+            self._("已从视频中提取音频") in translated_text or
+            self._("正在加载模型并处理音频") in translated_text or
+            self._("音频信息:") in translated_text
         )
         
         # 格式化转录文本
         if start_time is not None and end_time is not None and not is_initial_message:
             # 添加音频内时间戳（仅对实际转录内容）
             timestamp_str = f"<span style='color:#888888;'>[{start_time:.2f}s --> {end_time:.2f}s]</span>"
-            display_text = f"<span style='color:#888888;'>[{current_time}]</span> {timestamp_str} {text}"
+            display_text = f"<span style='color:#888888;'>[{current_time}]</span> {timestamp_str} {translated_text}"
         else:
             # 如果没有提供时间戳或是初始消息，只显示当前时间
-            display_text = f"<span style='color:#888888;'>[{current_time}]</span> <span style='color:#888888;'>{text}</span>"
+            display_text = f"<span style='color:#888888;'>[{current_time}]</span> <span style='color:#888888;'>{translated_text}</span>"
         
         # 添加到文本浏览器
         self.text_browser.append(display_text)

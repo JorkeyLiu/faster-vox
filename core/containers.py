@@ -20,6 +20,7 @@ from core.services.error_handling_service import ErrorHandlingService
 from core.models.config import cfg
 from core.events import event_bus
 from core.services.environment_service import EnvironmentService
+from .i18n import initialize_translation
 
 class AppContainer(containers.DeclarativeContainer):
     """应用程序容器 - 管理所有服务和配置的依赖注入"""
@@ -41,6 +42,24 @@ class AppContainer(containers.DeclarativeContainer):
         ]
     )
     
+    # 定义错误处理服务
+    error_handling_service = providers.Singleton(
+        ErrorHandlingService
+    )
+
+    # 定义配置服务 - 依赖app_config
+    config_service = providers.Singleton(
+        ConfigService,
+        config=providers.Object(cfg) # 直接使用 Object Provider
+    )
+
+    # 定义翻译函数 provider - 依赖 config_service
+    translation_function = providers.Singleton(
+        initialize_translation,
+        config_service=config_service,
+        error_service=error_handling_service
+    )
+
     # 定义配置提供者
     config = providers.Configuration(name="config")
     
@@ -54,23 +73,10 @@ class AppContainer(containers.DeclarativeContainer):
         }
     })
     
-    # 提供core.models.config中的cfg对象
-    app_config = providers.Object(cfg)
-    
-    # 定义配置服务 - 依赖app_config
-    config_service = providers.Singleton(
-        ConfigService,
-        config=app_config
-    )
-    
-    # 定义通知服务 - 无依赖
+    # 定义通知服务 - 依赖翻译函数
     notification_service = providers.Singleton(
-        NotificationService
-    )
-    
-    # 定义错误处理服务
-    error_handling_service = providers.Singleton(
-        ErrorHandlingService
+        NotificationService,
+        translator=translation_function
     )
     
     # 定义事件总线（单例）

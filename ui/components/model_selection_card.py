@@ -14,6 +14,7 @@ from qfluentwidgets import (ComboBoxSettingCard, TransparentToolButton,
 from core.models.model_data import ModelData, ModelSize
 from core.services.model_management_service import ModelManagementService
 from dependency_injector.wiring import inject, Provide
+from core.containers import AppContainer
 
 from core.events import event_bus
 from core.events.event_types import EventTypes, ModelEvent
@@ -21,7 +22,10 @@ from core.events.event_types import EventTypes, ModelEvent
 class ModelSelectionCard(ComboBoxSettingCard):
     """模型选择卡片，支持显示下载按钮和进度"""
     
-    def __init__(self, configItem, icon, title, content=None, texts=None, parent=None):
+    @inject
+    def __init__(self, configItem, icon, title, content=None, texts=None, parent=None,
+                 translator: callable = Provide[AppContainer.translation_function],
+                 model_service: ModelManagementService = Provide[AppContainer.model_service]): # model_service注入
         """初始化
         
         Args:
@@ -31,18 +35,24 @@ class ModelSelectionCard(ComboBoxSettingCard):
             content: 内容描述
             texts: 选项文本列表
             parent: 父部件
+            translator: 翻译函数
+            model_service: 模型服务
         """
+        self._ = translator # 赋值翻译函数
+        self.model_service = model_service # 保存模型服务
+
         # 保存texts参数
         self.texts = texts or []
         
         # 调用父类构造函数
+        # title 和 content 应该在 SettingsView 中被翻译后传入
         super().__init__(configItem, icon, title, content, texts, parent)
         
         # 创建下载按钮
         self.downloadButton = TransparentToolButton(FluentIcon.DOWNLOAD, self)
         self.downloadButton.setFixedSize(35, 35)
         self.downloadButton.setIconSize(QSize(16, 16))
-        self.downloadButton.setToolTip("下载模型")
+        self.downloadButton.setToolTip(self._("下载模型"))
         self.downloadButton.installEventFilter(ToolTipFilter(self.downloadButton, 1000, ToolTipPosition.TOP))
         self.downloadButton.clicked.connect(self._on_download_clicked)
         
@@ -50,7 +60,7 @@ class ModelSelectionCard(ComboBoxSettingCard):
         self.syncButton = TransparentToolButton(FluentIcon.SYNC, self)
         self.syncButton.setFixedSize(35, 35)
         self.syncButton.setIconSize(QSize(16, 16))
-        self.syncButton.setToolTip("重新下载模型")
+        self.syncButton.setToolTip(self._("重新下载模型"))
         self.syncButton.installEventFilter(ToolTipFilter(self.syncButton, 1000, ToolTipPosition.TOP))
         self.syncButton.clicked.connect(self._on_download_clicked)
         
@@ -92,10 +102,11 @@ class ModelSelectionCard(ComboBoxSettingCard):
         # 初始化 UI
         self.init_ui()
 
-    def init_ui(self, model_service: ModelManagementService = Provide["model_service"]):
+    # init_ui 现在在 __init__ 中被调用，并且 model_service 已经通过构造函数注入
+    def init_ui(self): # 移除 model_service 参数
         """初始化 UI"""
         self.current_model = self.get_selected_model()
-        self.model_service = model_service
+        # self.model_service is already set in __init__
         self.update_ui(self.current_model, self.model_service.get_model_data(self.current_model))
     
     def _on_model_data_changed(self, event):

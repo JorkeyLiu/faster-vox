@@ -6,6 +6,7 @@
 """
 
 from PySide6.QtCore import QObject
+from typing import Callable
 
 from core.models.notification_model import NotificationContent, NotificationTitle
 from core.events import event_bus, EventTypes
@@ -17,7 +18,6 @@ from core.events.event_types import (
     ModelEvent
 )
 
-
 class NotificationService(QObject):
     """通知服务，使用事件总线机制管理应用程序的通知
     
@@ -27,17 +27,16 @@ class NotificationService(QObject):
     - UI组件订阅事件总线的通知事件
     """
     
-    def __init__(self):
+    def __init__(self, translator: Callable): # 直接接收 translator
         """初始化通知服务"""
         super().__init__()
+        self._ = translator # 新增赋值
 
     def initialize(self):
         """初始化通知服务，订阅相关事件"""
         # 订阅模型事件
         event_bus.subscribe(EventTypes.MODEL_DOWNLOAD_STARTED, self._handle_model_event)
         event_bus.subscribe(EventTypes.MODEL_DOWNLOAD_COMPLETED, self._handle_model_event)
-        event_bus.subscribe(EventTypes.MODEL_LOADING, self._handle_model_event)
-        event_bus.subscribe(EventTypes.MODEL_LOADED, self._handle_model_event)
     
     def _handle_model_event(self, event_data: ModelEvent):
         """统一处理模型事件
@@ -49,37 +48,6 @@ class NotificationService(QObject):
             self.model_download_started(event_data.model_name)
         elif event_data.event_type == EventTypes.MODEL_DOWNLOAD_COMPLETED:
             self.model_download_completed(event_data.model_name, event_data.success)
-        # elif event_data.event_type == EventTypes.MODEL_LOADING:
-        #     self.model_loading(event_data.model_name)
-        # elif event_data.event_type == EventTypes.MODEL_LOADED:
-        #     self.model_loaded(event_data.model_name, event_data.success)
-
-    # 模型通知相关方法
-    # def model_loading(self, model_name: str):
-    #     """模型加载中通知
-        
-    #     Args:
-    #         model_name: 模型名称
-    #     """
-    #     title = NotificationTitle.NONE_TITLE.value
-    #     content = NotificationContent.MODEL_LOADING.value.format(model_name=model_name)
-    #     self.info(title, content)
-
-    # def model_loaded(self, model_name: str, success: bool):
-    #     """模型加载完成/失败通知
-        
-    #     Args:
-    #         model_name: 模型名称
-    #         success: 是否成功
-    #     """
-    #     if success:
-    #         title = NotificationTitle.NONE_TITLE.value
-    #         content = NotificationContent.MODEL_LOADED.value.format(model_name=model_name)
-    #         self.success(title, content)
-    #     else:
-    #         title = NotificationTitle.NONE_TITLE.value
-    #         content = NotificationContent.MODEL_LOADING_FAILED.value.format(model_name=model_name)
-    #         self.error(title, content)
     
     def model_download_started(self, model_name: str):
         """模型开始下载通知
@@ -88,7 +56,7 @@ class NotificationService(QObject):
             model_name: 模型名称
         """
         title = NotificationTitle.NONE_TITLE.value
-        content = NotificationContent.MODEL_DOWNLOAD_STARTED.value.format(model_name=model_name)
+        content = NotificationContent.MODEL_DOWNLOAD_STARTED.get_message(self._, model_name=model_name)
         self.success(title, content)
         
     def model_download_completed(self, model_name: str, success: bool):
@@ -100,11 +68,11 @@ class NotificationService(QObject):
         """
         if success:
             title = NotificationTitle.NONE_TITLE.value
-            content = NotificationContent.MODEL_DOWNLOAD_COMPLETED.value.format(model_name=model_name)
+            content = NotificationContent.MODEL_DOWNLOAD_COMPLETED.get_message(self._, model_name=model_name)
             self.success(title, content)
         else:
             title = NotificationTitle.NONE_TITLE.value
-            content = NotificationContent.MODEL_DOWNLOADING_FAILED.value.format(model_name=model_name)
+            content = NotificationContent.MODEL_DOWNLOADING_FAILED.get_message(self._, model_name=model_name)
             self.error(title, content)
     
     # 通用通知
@@ -171,5 +139,4 @@ class NotificationService(QObject):
             content=content
         )
         event_bus.publish(EventTypes.NOTIFICATION_ERROR, event_data)
-
 

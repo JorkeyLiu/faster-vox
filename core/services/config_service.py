@@ -60,9 +60,16 @@ class ConfigService:
         """获取界面语言
         
         Returns:
-            str: 语言代码，如"zh_CN"或"en_US"
+            str: 语言代码，如"zh_CN"或"en_US"，默认为 "zh_CN"
         """
-        return self.config.get(self.config.ui_language) # Updated reference
+        # The AppConfig now handles dynamic default language, so this getter should directly return the configured value.
+        # The fallback logic in AppConfig's __init__ is the primary source for default.
+        lang = self.config.get(self.config.ui_language)
+        if not lang:
+            # This case should be rare now, but as a last resort, log and return a hardcoded default.
+            logger.warning("UI language is unexpectedly not set in AppConfig, defaulting to 'en_US' as a final fallback.")
+            return "en_US"
+        return lang
     
     def set_ui_language(self, language: str) -> None: # Renamed from set_language
         """设置界面语言

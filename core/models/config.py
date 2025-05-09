@@ -10,12 +10,14 @@ import json
 from enum import Enum
 from pathlib import Path
 import platform
-from qfluentwidgets import (qconfig, QConfig, ConfigItem, OptionsConfigItem, 
-                           RangeConfigItem, BoolValidator, OptionsValidator, 
+import locale # Added import
+from qfluentwidgets import (qconfig, QConfig, ConfigItem, OptionsConfigItem,
+                           RangeConfigItem, BoolValidator, OptionsValidator,
                            RangeValidator, EnumSerializer)
 
 # 从 enums 导入 ModelSize 枚举
 from core.models.model_data import ModelSize
+from loguru import logger # Added for potential logging in language detection
 
 # 应用程序名称和组织名
 APP_NAME = "FasterVox"  # 使用驼峰命名避免兼容性问题
@@ -110,7 +112,7 @@ class Device(Enum):
     def display_name(value):
         """获取显示名称"""
         name_map = {
-            "auto": "自动选择",
+            "auto": "AUTO",
             "cpu": "CPU",
             "cuda": "CUDA (GPU)",
             "rocm": "ROCm (AMD GPU)"
@@ -171,55 +173,6 @@ class Language(Enum):
 
 class AppConfig(QConfig):
     """应用程序配置类"""
-
-    # 常规设置
-    theme = OptionsConfigItem("general", "theme", "light", OptionsValidator(["light", "dark"]))
-    ui_language = OptionsConfigItem("general", "ui_language", "zh_CN", OptionsValidator(["zh_CN", "en_US"])) # Renamed from 'language'
-    last_output_dir = ConfigItem("general", "last_output_dir", str(Path.home() / "Documents"))
-    
-    # 转录设置
-    model_name = OptionsConfigItem(
-        "transcription", "model_name", ModelSize.MEDIUM, 
-        OptionsValidator(ModelSize), EnumSerializer(ModelSize)
-    )
-    model_path = ConfigItem(
-        "transcription", "model_path", 
-        str(APP_MODELS_DIR)
-    )
-    compute_type = OptionsConfigItem(
-        "transcription", "compute_type", ComputeType.FLOAT16, 
-        OptionsValidator(ComputeType), EnumSerializer(ComputeType)
-    )
-    device = OptionsConfigItem(
-        "transcription", "device", Device.AUTO,
-        OptionsValidator(Device), EnumSerializer(Device)
-    )
-    cpu_threads = RangeConfigItem("transcription", "cpu_threads", 4, RangeValidator(1, 16))
-    num_workers = RangeConfigItem("transcription", "num_workers", 1, RangeValidator(1, 8))
-    beam_size = RangeConfigItem("transcription", "beam_size", 5, RangeValidator(1, 10))
-    vad_filter = ConfigItem("transcription", "vad_filter", True, BoolValidator())
-    word_timestamps = ConfigItem("transcription", "word_timestamps", True, BoolValidator())
-    punctuation = ConfigItem("transcription", "punctuation", False, BoolValidator())
-    
-    # 新增设置项
-    task = OptionsConfigItem("transcription", "task", "transcribe", 
-                             OptionsValidator(["transcribe", "translate"]))
-    temperature = RangeConfigItem("transcription", "temperature", 0.0, RangeValidator(0.0, 1.0))
-    condition_on_previous_text = ConfigItem("transcription", "condition_on_previous_text", 
-                                          True, BoolValidator())
-    no_speech_threshold = RangeConfigItem("transcription", "no_speech_threshold", 
-                                         0.6, RangeValidator(0.1, 1.0))
-    
-    # 输出设置
-    default_format = OptionsConfigItem(
-        "output", "default_format", OutputFormat.SRT, 
-        OptionsValidator(OutputFormat), EnumSerializer(OutputFormat)
-    )
-    default_language = OptionsConfigItem(
-        "output", "default_language", Language.AUTO, 
-        OptionsValidator(Language), EnumSerializer(Language)
-    )
-    output_directory = ConfigItem("output", "output_directory", "", None)  # 指定输出目录，为空则使用源文件目录
     
     def __init__(self):
         """初始化配置对象"""
@@ -230,7 +183,57 @@ class AppConfig(QConfig):
         
         # 确保配置目录存在
         self.config_dir.mkdir(parents=True, exist_ok=True)
-    
+
+        # --- Define ConfigItems as instance attributes ---
+        # 常规设置
+        self.theme = OptionsConfigItem("general", "theme", "light", OptionsValidator(["light", "dark"]))
+        self.ui_language = OptionsConfigItem("general", "ui_language", self._get_initial_ui_language(), OptionsValidator(["zh_CN", "en_US"]))
+        self.last_output_dir = ConfigItem("general", "last_output_dir", str(Path.home() / "Documents"))
+        
+        # 转录设置
+        self.model_name = OptionsConfigItem(
+            "transcription", "model_name", ModelSize.MEDIUM,
+            OptionsValidator(ModelSize), EnumSerializer(ModelSize)
+        )
+        self.model_path = ConfigItem(
+            "transcription", "model_path",
+            str(APP_MODELS_DIR)
+        )
+        self.compute_type = OptionsConfigItem(
+            "transcription", "compute_type", ComputeType.FLOAT16,
+            OptionsValidator(ComputeType), EnumSerializer(ComputeType)
+        )
+        self.device = OptionsConfigItem(
+            "transcription", "device", Device.AUTO,
+            OptionsValidator(Device), EnumSerializer(Device)
+        )
+        self.cpu_threads = RangeConfigItem("transcription", "cpu_threads", 4, RangeValidator(1, 16))
+        self.num_workers = RangeConfigItem("transcription", "num_workers", 1, RangeValidator(1, 8))
+        self.beam_size = RangeConfigItem("transcription", "beam_size", 5, RangeValidator(1, 10))
+        self.vad_filter = ConfigItem("transcription", "vad_filter", True, BoolValidator())
+        self.word_timestamps = ConfigItem("transcription", "word_timestamps", True, BoolValidator())
+        self.punctuation = ConfigItem("transcription", "punctuation", False, BoolValidator())
+        
+        # 新增设置项
+        self.task = OptionsConfigItem("transcription", "task", "transcribe",
+                                 OptionsValidator(["transcribe", "translate"]))
+        self.temperature = RangeConfigItem("transcription", "temperature", 0.0, RangeValidator(0.0, 1.0))
+        self.condition_on_previous_text = ConfigItem("transcription", "condition_on_previous_text",
+                                              True, BoolValidator())
+        self.no_speech_threshold = RangeConfigItem("transcription", "no_speech_threshold",
+                                             0.6, RangeValidator(0.1, 1.0))
+        
+        # 输出设置
+        self.default_format = OptionsConfigItem(
+            "output", "default_format", OutputFormat.SRT,
+            OptionsValidator(OutputFormat), EnumSerializer(OutputFormat)
+        )
+        self.default_language = OptionsConfigItem(
+            "output", "default_language", Language.AUTO,
+            OptionsValidator(Language), EnumSerializer(Language)
+        )
+        self.output_directory = ConfigItem("output", "output_directory", "", None)  # 指定输出目录，为空则使用源文件目录
+
     def get_last_directory(self) -> str:
         """获取上次使用的目录"""
         return self.get(self.last_output_dir)
@@ -308,10 +311,30 @@ class AppConfig(QConfig):
         """获取输出目录"""
         return self.get(self.output_directory)
     
+    def _get_initial_ui_language(self) -> str:
+        """
+        Determines the initial UI language based on the system's default locale.
+        Defaults to 'en_US' if detection fails or language is not supported.
+        """
+        default_ui_lang = "en_US"
+        try:
+            lang_code, _ = locale.getdefaultlocale() # encoding is not used
+            if lang_code:
+                if lang_code.startswith('zh'):
+                    return "zh_CN"
+                elif lang_code.startswith('en'):
+                    return "en_US"
+            # If lang_code is None or not 'zh'/'en', return default
+            return default_ui_lang
+        except Exception as e:
+            logger.warning(f"Failed to determine system language: {e}. Defaulting UI language to '{default_ui_lang}'.")
+            return default_ui_lang
+    
     def reset_to_defaults(self) -> None:
         """恢复默认设置"""
         self.set(self.theme, "light")
-        self.set(self.ui_language, "zh_CN") # Renamed from 'language', set default UI language
+        initial_ui_lang = self._get_initial_ui_language()
+        self.set(self.ui_language, initial_ui_lang)
         self.set(self.model_name, ModelSize.MEDIUM)
         self.set(self.compute_type, ComputeType.INT8)
         self.set(self.device, Device.CPU)

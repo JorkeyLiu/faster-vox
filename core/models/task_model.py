@@ -24,36 +24,22 @@ class ProcessStatus(Enum):
     CANCELLING = auto()  # 取消中
     
     @classmethod
-    def get_display_text(cls, status, is_first_file=False, is_next_file=False):
-        """获取状态的显示文本
+    def get_display_text(cls, status):
+        """获取状态的显示键 (用于国际化)
         
         Args:
             status: ProcessStatus枚举值
-            is_first_file: 是否是第一个文件
-            is_next_file: 是否是下一个要处理的文件
             
         Returns:
-            str: 状态显示文本
+            str: 状态键 (小写枚举名称)
         """
-        status_display = {
-            cls.STARTED: "开始处理",
-            cls.IN_PROGRESS: "处理中",
-            cls.COMPLETED: "处理完成",
-            cls.FAILED: "处理失败",
-            cls.CANCELLED: "已取消",
-            cls.CANCELLING: "正在取消...",
-            cls.WAITING: "待处理",
-            cls.PREPARING: "准备处理",
-            cls.EXPORTING: "正在导出"
-        }
-        
         if not isinstance(status, cls):
-            return status_display[cls.WAITING]
+            # 对于无效状态，可以返回一个默认键或引发错误
+            # 这里返回 'waiting' 作为默认值
+            return cls.WAITING.name.lower()
             
-        if status == cls.WAITING and (is_first_file or is_next_file):
-            return status_display[cls.PREPARING]
-            
-        return status_display[status]
+        # 直接返回枚举成员名称的小写形式作为键
+        return status.name.lower()
 
 
 class Task:

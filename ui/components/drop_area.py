@@ -18,6 +18,7 @@ from loguru import logger
 from core.services.config_service import ConfigService
 from core.services.notification_service import NotificationService
 from core.services.error_handling_service import ErrorHandlingService
+from core.containers import AppContainer # 导入 AppContainer
 from core.utils import file_utils
 from core.utils.file_utils import FileSystemUtils
 from core.models.error_model import ErrorCategory, ErrorPriority
@@ -27,9 +28,14 @@ from core.events import event_bus, EventTypes, RequestAddTasksEvent, FilesDroppe
 class DropArea(CardWidget):
     """通用拖放区域，支持文件和文件夹拖放"""
     
+    @inject
     def __init__(
         self,
         parent=None,
+        translator: callable = Provide[AppContainer.translation_function],
+        config_service: ConfigService = Provide[AppContainer.config_service],
+        notification_service: NotificationService = Provide[AppContainer.notification_service],
+        error_service: ErrorHandlingService = Provide[AppContainer.error_handling_service]
     ):
         """初始化拖放区域组件
         
@@ -37,6 +43,7 @@ class DropArea(CardWidget):
             parent: 父组件
         """
         super().__init__(parent)
+        self._ = translator # 赋值翻译函数
         
         # 当前是否有拖拽悬停在区域上
         self._is_dragging_over = False
@@ -44,8 +51,10 @@ class DropArea(CardWidget):
         # 当前是否有鼠标悬停在区域上
         self._is_hovered = False
         
-        # 初始化服务
-        self._init_services()
+        # 初始化服务 (通过构造函数注入)
+        self.config_service = config_service
+        self.notification_service = notification_service
+        self.error_service = error_service
         
         # 设置对象名称
         self.setObjectName("dropArea")
@@ -62,17 +71,6 @@ class DropArea(CardWidget):
         # 监听主题变化
         from qfluentwidgets import qconfig
         qconfig.themeChanged.connect(self._update_icon)
-
-    @inject
-    def _init_services(
-        self, 
-        config_service: ConfigService = Provide["config_service"],
-        notification_service: NotificationService = Provide["notification_service"],
-        error_service: ErrorHandlingService = Provide["error_service"]
-    ):
-        self.config_service = config_service
-        self.notification_service = notification_service
-        self.error_service = error_service
 
     def _init_ui(self):
         """初始化UI"""
@@ -92,17 +90,17 @@ class DropArea(CardWidget):
         self.icon_label.setAlignment(Qt.AlignCenter)
         
         # 添加标签
-        self.title_label = TitleLabel("拖放音频、视频文件或文件夹")
+        self.title_label = TitleLabel(self._("拖放音频、视频文件或文件夹"))
         self.title_label.setAlignment(Qt.AlignCenter)
         
-        self.or_label = BodyLabel("或者")
+        self.or_label = BodyLabel(self._("或者"))
         self.or_label.setAlignment(Qt.AlignCenter)
         
-        self.click_label = BodyLabel("点击此处选择文件")
+        self.click_label = BodyLabel(self._("点击此处选择文件"))
         self.click_label.setAlignment(Qt.AlignCenter)
         
         # 暂时隐藏
-        # self.right_click_label = BodyLabel("右键点击选择文件夹")
+        # self.right_click_label = BodyLabel(self._("右键点击选择文件夹"))
         self.right_click_label = BodyLabel("")
         self.right_click_label.setAlignment(Qt.AlignCenter)
         
@@ -154,7 +152,7 @@ class DropArea(CardWidget):
             # 使用FileSystemUtils的通用方法创建文件对话框
             files, _ = FileSystemUtils.create_file_dialog(
                 parent=self,
-                title="选择音频/视频文件",
+                title=self._("选择音频/视频文件"),
                 last_directory=last_directory
             )
             
@@ -191,7 +189,7 @@ class DropArea(CardWidget):
             # 使用FileSystemUtils的通用方法创建文件夹对话框
             folder = FileSystemUtils.create_folder_dialog(
                 parent=self,
-                title="选择包含音频/视频文件的文件夹",
+                title=self._("选择包含音频/视频文件的文件夹"),
                 last_directory=last_directory
             )
             
@@ -245,7 +243,7 @@ class DropArea(CardWidget):
                 
                 # 更新标签文本和图标
                 self._update_icon()
-                self.title_label.setText("释放鼠标添加文件")
+                self.title_label.setText(self._("释放鼠标添加文件"))
                 self.or_label.setText("")
                 self.click_label.setText("")
                 self.right_click_label.setText("")
@@ -266,11 +264,11 @@ class DropArea(CardWidget):
         
         # 恢复标签文本和图标
         self._update_icon()
-        self.title_label.setText("拖放音频、视频文件或文件夹")
-        self.or_label.setText("或者")
-        self.click_label.setText("点击此处选择文件")
+        self.title_label.setText(self._("拖放音频、视频文件或文件夹"))
+        self.or_label.setText(self._("或者"))
+        self.click_label.setText(self._("点击此处选择文件"))
         # 暂时隐藏
-        # self.right_click_label.setText("右键点击选择文件夹")
+        # self.right_click_label.setText(self._("右键点击选择文件夹"))
         self.right_click_label.setText("")
         
         # 重绘组件
@@ -310,11 +308,11 @@ class DropArea(CardWidget):
         
         # 恢复标签文本和图标
         self._update_icon()
-        self.title_label.setText("拖放音频、视频文件或文件夹")
-        self.or_label.setText("或者")
-        self.click_label.setText("点击此处选择文件")
+        self.title_label.setText(self._("拖放音频、视频文件或文件夹"))
+        self.or_label.setText(self._("或者"))
+        self.click_label.setText(self._("点击此处选择文件"))
         # 暂时隐藏
-        # self.right_click_label.setText("右键点击选择文件夹")
+        # self.right_click_label.setText(self._("右键点击选择文件夹"))
         self.right_click_label.setText("")
         
         # 重绘组件

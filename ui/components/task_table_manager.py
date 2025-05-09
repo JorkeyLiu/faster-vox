@@ -16,24 +16,30 @@ from core.models.task_model import ProcessStatus, Task
 from core.utils.file_utils import FileSystemUtils
 from core.services.task_service import TaskService
 from dependency_injector.wiring import Provide, inject
+from core.containers import AppContainer
 from core.events import event_bus, EventTypes, TaskStateChangedEvent, TaskAddedEvent, TaskRemovedEvent, TaskTimerUpdatedEvent
 
 class TaskTableManager(QObject):
     """任务表格管理器，负责处理表格相关操作"""
     
+    @inject
     def __init__(
-        self, 
-        table_widget: TableWidget, 
-        parent: QObject = None):
-        
+        self,
+        table_widget: TableWidget,
+        parent: QObject = None,
+        translator: callable = Provide[AppContainer.translation_function],
+        task_service: TaskService = Provide[AppContainer.task_service] # 直接注入task_service
+    ):
         """初始化任务表格管理器
         
         Args:
             table_widget: 表格控件实例
-            task_service: 任务服务实例，如果提供则自动连接信号
             parent: 父对象
+            translator: 翻译函数
+            task_service: 任务服务实例
         """
         super().__init__(parent)
+        self._ = translator # 赋值翻译函数
         self.table = table_widget
         
         # 设置表格外观和对齐方式
@@ -42,16 +48,8 @@ class TaskTableManager(QObject):
         # 存储按钮回调函数，key为动作名称，value为回调函数
         self.button_callbacks = {}
         
-        # 初始化task_service
-        self._init_task_service()
-        
-        # 事件订阅由 TaskView 处理
-        
-    
-    @inject
-    def _init_task_service(self, task_service: TaskService = Provide["task_service"]):
         self.task_service = task_service
-        self.initialize_from_task_service()
+        self.initialize_from_task_service() # 直接调用初始化
         
     def initialize_from_task_service(self):
         """从任务服务初始化表格数据"""
@@ -163,7 +161,7 @@ class TaskTableManager(QObject):
         
         # 添加删除按钮
         delete_button = ToolButton(FluentIcon.DELETE)
-        delete_button.setToolTip("删除")
+        delete_button.setToolTip(self._("删除"))
         delete_button.setProperty("task_id", task_id)
         delete_button.setProperty("action", "delete")
         delete_button.setEnabled(True)
@@ -428,7 +426,7 @@ class TaskTableManager(QObject):
             
             if self.table.columnCount() > 2:
                 header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)  # 状态列固定宽度
-                self.table.setColumnWidth(2, 100)  # 状态列宽
+                self.table.setColumnWidth(2, 115)  # 状态列宽
             
             if self.table.columnCount() > 3:
                 header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)  # 操作列固定宽度

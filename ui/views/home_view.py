@@ -13,6 +13,7 @@ from dependency_injector.wiring import Provide, inject
 
 from core.services.audio_service import AudioService
 from core.services.config_service import ConfigService
+from core.containers import AppContainer # 导入 AppContainer
 from core.services.error_handling_service import ErrorHandlingService, ErrorCategory, ErrorPriority, ErrorInfo
 from core.events import event_bus
 from core.events.event_types import EventTypes, RequestAddTasksEvent, ConfigChangedEvent, ErrorEvent, FilesDroppedEvent
@@ -22,17 +23,26 @@ from ui.components.drop_area import DropArea
 class HomeView(QWidget):
     """主页视图"""
     
+    @inject
     def __init__(
-        self, 
-        parent=None
+        self,
+        parent=None,
+        translator: callable = Provide[AppContainer.translation_function],
+        config_service: ConfigService = Provide[AppContainer.config_service],
+        audio_service: AudioService = Provide[AppContainer.audio_service],
+        error_service: ErrorHandlingService = Provide[AppContainer.error_handling_service]
     ):
         super().__init__(parent)
+        self._ = translator # 赋值翻译函数
         
         # 设置对象名称
         self.setObjectName("homeView")
         
-        # 初始化服务
-        self._init_services()
+        # 初始化服务 (通过构造函数注入)
+        self.config_service = config_service
+        self.audio_service = audio_service
+        self.error_service = error_service
+        # self._init_services() # 不再需要单独调用
 
         # 从父组件获取任务视图
         self.task_view = None
@@ -42,19 +52,19 @@ class HomeView(QWidget):
         # 初始化UI
         self._init_ui()
     
-    @inject
-    def _init_services(
-        self, 
-        config_service: ConfigService = Provide["config_service"],
-        audio_service: AudioService = Provide["audio_service"],
-        error_service: ErrorHandlingService = Provide["error_service"]
-    ):
-        self.config_service = config_service
-        self.audio_service = audio_service
-        self.error_service = error_service
+    # @inject # _init_services 方法不再需要
+    # def _init_services(
+    #     self,
+    #     config_service: ConfigService = Provide[AppContainer.config_service],
+    #     audio_service: AudioService = Provide[AppContainer.audio_service],
+    #     error_service: ErrorHandlingService = Provide[AppContainer.error_handling_service]
+    # ):
+    #     self.config_service = config_service
+    #     self.audio_service = audio_service
+    #     self.error_service = error_service
         
         # 订阅文件拖放事件
-        event_bus.subscribe(EventTypes.FILES_DROPPED, self._on_files_dropped)
+        event_bus.subscribe(EventTypes.FILES_DROPPED, self._on_files_dropped) # 保持订阅
 
     def _init_ui(self):
         """初始化UI"""

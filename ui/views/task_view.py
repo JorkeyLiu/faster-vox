@@ -43,6 +43,7 @@ from core.services.config_service import ConfigService
 from core.services.transcription_service import TranscriptionService
 from core.services.audio_service import AudioService
 from core.services.task_service import TaskService
+from core.containers import AppContainer # 导入 AppContainer
 from core.services.notification_service import NotificationService
 from core.services.error_handling_service import ErrorHandlingService, ErrorCategory, ErrorPriority, ErrorInfo
 from ui.components.task_table_manager import TaskTableManager
@@ -66,11 +67,20 @@ class TaskView(QWidget):
     requestUpdateDuration = Signal(str, str)    # task_id, duration_text
     requestUpdateActionButtons = Signal(str, bool)# task_id, is_active
     
+    @inject
     def __init__(
-        self, 
+        self,
         parent=None,
+        translator: callable = Provide[AppContainer.translation_function],
+        config_service: ConfigService = Provide[AppContainer.config_service],
+        transcription_service: TranscriptionService = Provide[AppContainer.transcription_service],
+        task_service: TaskService = Provide[AppContainer.task_service],
+        notification_service: NotificationService = Provide[AppContainer.notification_service],
+        error_service: ErrorHandlingService = Provide[AppContainer.error_handling_service],
+        model_service = Provide[AppContainer.model_service]
     ):
         super().__init__(parent)
+        self._ = translator # 赋值翻译函数
         
         # 设置对象名称
         self.setObjectName("taskView")
@@ -78,8 +88,13 @@ class TaskView(QWidget):
         # 启用拖拽支持
         self.setAcceptDrops(True)
         
-        # 初始化服务
-        self._init_services()
+        # 初始化服务 (通过构造函数注入)
+        self.config_service = config_service
+        self.transcription_service = transcription_service
+        self.task_service = task_service
+        self.notification_service = notification_service
+        self.error_service = error_service
+        self.model_service = model_service
 
         # 初始化UI
         self._init_ui()
@@ -122,23 +137,6 @@ class TaskView(QWidget):
             # 忽略可能的异常
             pass
         
-    @inject
-    def _init_services(
-        self, 
-        config_service: ConfigService = Provide["config_service"],
-        transcription_service: TranscriptionService = Provide["transcription_service"],
-        task_service: TaskService = Provide["task_service"],
-        notification_service: NotificationService = Provide["notification_service"],
-        error_service: ErrorHandlingService = Provide["error_service"],
-        model_service = Provide["model_service"]
-    ):
-        self.config_service = config_service
-        self.transcription_service = transcription_service
-        self.task_service = task_service
-        self.notification_service = notification_service
-        self.error_service = error_service
-        self.model_service = model_service
-    
     def _init_ui(self):
         """初始化UI"""
         # 创建布局
@@ -149,15 +147,15 @@ class TaskView(QWidget):
         # 创建标题区域
         title_layout = QHBoxLayout()
         
-        self.title_label = SubtitleLabel("任务列表", self)
+        self.title_label = SubtitleLabel(self._("任务列表"), self)
         
-        self.add_button = PushButton("添加", self)
+        self.add_button = PushButton(self._("添加"), self)
         self.add_button.setIcon(FluentIcon.ADD)
         self.add_button.clicked.connect(self._on_add_clicked)
         
-        self.clear_button = PushButton("清空", self)
+        self.clear_button = PushButton(self._("清空"), self)
         self.clear_button.setIcon(FluentIcon.DELETE)
-        self.clear_button.setToolTip("清空列表")
+        self.clear_button.setToolTip(self._("清空列表"))
         self.clear_button.clicked.connect(self._on_clear_clicked)
         
         title_layout.addWidget(self.title_label)
@@ -168,7 +166,7 @@ class TaskView(QWidget):
         # 创建任务表格
         self.table = TaskTableWidget(self)
         self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["文件名", "处理时长", "状态", "操作"])
+        self.table.setHorizontalHeaderLabels([self._("文件名"), self._("处理时长"), self._("状态"), self._("操作")])
         
         # 连接表格点击事件
         self.table.cellClicked.connect(self._on_table_cell_clicked)
@@ -177,8 +175,8 @@ class TaskView(QWidget):
         log_layout = QVBoxLayout()
         log_title_layout = QHBoxLayout()
         
-        self.log_title_label = SubtitleLabel("处理日志", self)
-        self.clear_log_button = PushButton("清空日志", self)
+        self.log_title_label = SubtitleLabel(self._("处理日志"), self)
+        self.clear_log_button = PushButton(self._("清空日志"), self)
         self.clear_log_button.setIcon(FluentIcon.DELETE)
         self.clear_log_button.clicked.connect(self._on_clear_log_clicked)
         
@@ -193,7 +191,7 @@ class TaskView(QWidget):
         log_layout.addWidget(self.log_browser)
         
         # 创建开始处理按钮
-        self.start_button = PrimaryPushButton("开始处理", self)
+        self.start_button = PrimaryPushButton(self._("开始处理"), self)
         self.start_button.setIcon(FluentIcon.PLAY)
         self.start_button.clicked.connect(self._on_start_clicked)
         
@@ -224,8 +222,12 @@ class TaskView(QWidget):
     def _handle_task_state_changed(self, event: TaskStateChangedEvent):
         """处理任务状态变更事件 (事件总线回调)"""
         if hasattr(event, 'task_id') and hasattr(event, 'status'):
+            # 获取状态键
+            status_key = ProcessStatus.get_display_text(event.status)
+            # 翻译状态键
+            translated_status = self._(f"status_{status_key}")
             # 发射信号，让槽函数在主线程更新UI
-            self.requestUpdateStatus.emit(event.task_id, ProcessStatus.get_display_text(event.status))
+            self.requestUpdateStatus.emit(event.task_id, translated_status)
             # 更新: 获取Task对象并调用is_active()方法
             task = self.task_service.get_task(event.task_id) # 依赖下一步添加 get_task 方法
             if task:
@@ -276,7 +278,7 @@ class TaskView(QWidget):
         # 使用FileSystemUtils的通用方法创建文件对话框
         files, _ = FileSystemUtils.create_file_dialog(
             parent=self,
-            title="选择音频/视频文件",
+            title=self._("选择音频/视频文件"),
             last_directory=last_directory,
             extensions=get_supported_media_extensions()
         )
@@ -368,7 +370,7 @@ class TaskView(QWidget):
         if not FileSystemUtils.open_directory(file_dir):
             # 使用ErrorHandlingService处理错误
             error_info = ErrorInfo(
-                message=NotificationContent.DIRECTORY_OPEN_FAILED.value.format(directory_path=file_dir),
+                message=self._(NotificationContent.DIRECTORY_OPEN_FAILED.value).format(directory_path=file_dir), # 翻译
                 category=ErrorCategory.FILE_OPERATION,
                 priority=ErrorPriority.MEDIUM,
                 source="TaskView._on_table_cell_clicked",
@@ -395,11 +397,11 @@ class TaskView(QWidget):
         
         # 更新开始处理按钮状态
         if is_processing:
-            self.start_button.setText("取消处理")
+            self.start_button.setText(self._("取消处理"))
             self.start_button.setIcon(FluentIcon.CANCEL)
             self.start_button.setEnabled(True)  # 确保取消按钮始终可用
         else:
-            self.start_button.setText("开始处理")
+            self.start_button.setText(self._("开始处理"))
             self.start_button.setIcon(FluentIcon.PLAY)
             # 只有在有待处理任务时才启用按钮
             self.start_button.setEnabled(has_pending_tasks)
@@ -477,7 +479,7 @@ class TaskView(QWidget):
         if file_name:
             # 添加成功消息到转录查看器
             output_name = FileSystemUtils.get_file_name(output_path)
-            self.transcript_viewer.add_success_message(f"任务完成: {file_name} -> {output_name}")
+            self.transcript_viewer.add_success_message(self._("任务完成: {file_name} -> {output_name}").format(file_name=file_name, output_name=output_name))
         
         # 处理下一个任务
         self._process_next_task()
@@ -502,11 +504,11 @@ class TaskView(QWidget):
             event_bus.publish(EventTypes.REQUEST_CANCEL_PROCESSING, event_data)
             
             # 更新按钮状态为"正在取消..."
-            self.start_button.setText("正在取消...")
+            self.start_button.setText(self._("正在取消..."))
             self.start_button.setEnabled(False)  # 取消过程中禁用按钮，防止重复点击
             
             # 添加到转录查看器
-            self.transcript_viewer.add_transcript_text("正在取消任务，请稍候...")
+            self.transcript_viewer.add_transcript_text(self._("正在取消任务，请稍候..."))
             return
         
         # 获取所有待处理的任务
@@ -514,7 +516,7 @@ class TaskView(QWidget):
         
         # 如果没有待处理的任务，记录日志并返回
         if not pending_tasks:
-            logger.debug("没有待处理的任务")
+            logger.debug(self._("没有待处理的任务"))
             return
             
         # 获取当前要使用的模型名称
@@ -527,7 +529,7 @@ class TaskView(QWidget):
 
         # 如果模型存在，检查是否已加载
         if model_data and model_data.is_exists:
-            # self.transcript_viewer.add_system_message(f"模型 {model_name} 已找到，准备开始处理...")
+            # self.transcript_viewer.add_system_message(self._("模型 {model_name} 已找到，准备开始处理...").format(model_name=model_name))
             
             # 检查模型是否已加载
             if self.model_service.is_model_loaded():
@@ -537,15 +539,15 @@ class TaskView(QWidget):
                 # 如果未加载，需要先加载模型
                 self._is_waiting_for_model = True
                 # 更新UI状态
-                # self.start_button.setText("正在加载模型...")
+                # self.start_button.setText(self._("正在加载模型..."))
                 self.start_button.setEnabled(False)
                 # 添加到转录查看器
-                # self.transcript_viewer.add_system_message(f"模型 {model_name} 未加载，正在加载...")
+                # self.transcript_viewer.add_system_message(self._("模型 {model_name} 未加载，正在加载...").format(model_name=model_name))
                 # 启动模型加载
                 self.model_service.load_model(model_name)
         else:
             # 如果模型不存在，提示用户去设置页面下载
-            error_message = f"模型 '{model_name}' 未找到或无效，请前往设置页面下载所需模型。"
+            error_message = self._("模型 '{model_name}' 未找到或无效，请前往设置页面下载所需模型。").format(model_name=model_name)
             logger.warning(error_message)
             self.transcript_viewer.add_error_message(error_message)
             # 更新按钮状态，以防万一在检查期间状态未更新
@@ -581,12 +583,15 @@ class TaskView(QWidget):
     def _handle_task_added_event(self, event: TaskAddedEvent):
         """处理任务添加事件 (事件总线回调)"""
         if hasattr(event, 'task_id') and hasattr(event, 'file_path'):
+             # 获取初始状态键
+             initial_status_key = ProcessStatus.get_display_text(ProcessStatus.WAITING)
+             # 翻译初始状态键
+             translated_initial_status = self._(f"status_{initial_status_key}")
              # 发射信号，让槽函数在主线程更新UI
-             # 使用默认等待状态，因为TaskAddedEvent不包含status
              self.requestAddTask.emit(
                  event.task_id,
                  event.file_path,
-                 ProcessStatus.get_display_text(ProcessStatus.WAITING),
+                 translated_initial_status, # 使用翻译后的状态
                  "00:00" # 初始时长
              )
              # 更新按钮状态 (可以保留，因为列表内容变化可能影响按钮)
@@ -596,12 +601,12 @@ class TaskView(QWidget):
             logger.warning(f"接收到无效的TASK_ADDED事件: {event}")
 
     def _handle_model_loaded(self, event):
-        """处理模型加载完成事件"""
-        # 如果之前因为模型未加载而等待，现在开始处理
-        if self._is_waiting_for_model:
-            self._is_waiting_for_model = False
-            self.transcript_viewer.add_system_message(f"模型 {event.model_name} 加载完成，开始处理任务...")
-            self._start_processing_tasks() # 重新尝试开始处理
+       """处理模型加载完成事件"""
+       # 如果之前因为模型未加载而等待，现在开始处理
+       if self._is_waiting_for_model:
+           self._is_waiting_for_model = False
+           self.transcript_viewer.add_system_message(self._("模型 {model_name} 加载完成，开始处理任务...").format(model_name=event.model_name))
+           self._start_processing_tasks() # 重新尝试开始处理
 
     def _connect_table_manager_signals(self):
         """连接内部信号到TaskTableManager的槽函数"""
@@ -649,7 +654,7 @@ class TaskView(QWidget):
         # 记录日志
         logger.info("所有任务处理完成")
         # 显示成功消息
-        self.transcript_viewer.add_success_message("所有任务处理完成")
+        self.transcript_viewer.add_success_message(self._("所有任务处理完成"))
 
 class TaskTableWidget(TableWidget):
     """自定义表格控件，用于处理鼠标悬停事件"""

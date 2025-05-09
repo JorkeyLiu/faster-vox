@@ -24,6 +24,7 @@ from ui.components.model_selection_card import ModelSelectionCard
 from core.models.config import ComputeType, Language, OutputFormat, cfg, ModelSize, Device # 添加 Device, 移到顶部
 from core.models.notification_model import NotificationTitle, NotificationContent
 from core.services.model_management_service import ModelManagementService
+from core.containers import AppContainer # 导入 AppContainer
 from core.services.environment_service import EnvironmentService
 from core.models.environment_model import EnvironmentInfo
 from core.services.notification_service import NotificationService
@@ -39,11 +40,19 @@ from qfluentwidgets import qconfig
 class SettingsView(ScrollArea):
     """设置视图"""
     
+    @inject
     def __init__(
-        self, 
-        parent=None, 
+        self,
+        parent=None,
+        translator: callable = Provide[AppContainer.translation_function],
+        model_service: ModelManagementService = Provide[AppContainer.model_service],
+        environment_service: EnvironmentService = Provide[AppContainer.environment_service],
+        notification_service: NotificationService = Provide[AppContainer.notification_service],
+        error_service: ErrorHandlingService = Provide[AppContainer.error_handling_service],
+        config_service: ConfigService = Provide[AppContainer.config_service]
     ):
         super().__init__(parent)
+        self._ = translator # 赋值翻译函数
         
         # 设置对象名称
         self.setObjectName("settingsView")
@@ -52,10 +61,15 @@ class SettingsView(ScrollArea):
         self.scroll_widget = QWidget()
         
         # 创建标题标签
-        self.title_label = TitleLabel("设置", self)
+        self.title_label = TitleLabel(self._("设置"), self)
 
-        # 初始化服务
-        self._init_services()
+        # 初始化服务 (通过构造函数注入)
+        self.model_service = model_service
+        self.environment_service = environment_service
+        self.notification_service = notification_service
+        self.error_service = error_service
+        self.config_service = config_service
+        # self._init_services() # 不再需要单独调用
         
         # 初始化所有设置组
         self._init_groups()
@@ -76,20 +90,20 @@ class SettingsView(ScrollArea):
         self._update_cuda_status_ui()
         self._update_compute_precision_options() # Add call here
         
-    @inject
-    def _init_services(
-        self,
-        model_service: ModelManagementService = Provide["model_service"],
-        environment_service: EnvironmentService = Provide["environment_service"],
-        notification_service: NotificationService = Provide["notification_service"],
-        error_service: ErrorHandlingService = Provide["error_service"],
-        config_service: ConfigService = Provide["config_service"] # 注入 ConfigService
-    ):
-        self.model_service = model_service
-        self.environment_service = environment_service
-        self.notification_service = notification_service
-        self.error_service = error_service
-        self.config_service = config_service # 保存 ConfigService 实例
+    # @inject # _init_services 方法不再需要
+    # def _init_services(
+    #     self,
+    #     model_service: ModelManagementService = Provide[AppContainer.model_service],
+    #     environment_service: EnvironmentService = Provide[AppContainer.environment_service],
+    #     notification_service: NotificationService = Provide[AppContainer.notification_service],
+    #     error_service: ErrorHandlingService = Provide[AppContainer.error_handling_service],
+    #     config_service: ConfigService = Provide[AppContainer.config_service]
+    # ):
+    #     self.model_service = model_service
+    #     self.environment_service = environment_service
+    #     self.notification_service = notification_service
+    #     self.error_service = error_service
+    #     self.config_service = config_service
         
         # 订阅模型事件
         event_bus.subscribe(EventTypes.MODEL_DOWNLOAD_STARTED, self._on_model_downloading)
@@ -108,13 +122,13 @@ class SettingsView(ScrollArea):
     def _init_groups(self):
         """初始化所有设置组"""
         # 模型设置组
-        self.model_group = SettingCardGroup("模型设置", self.scroll_widget)
+        self.model_group = SettingCardGroup(self._("模型设置"), self.scroll_widget)
         
         # 转录设置组
-        self.transcription_group = SettingCardGroup("转录设置", self.scroll_widget)
+        self.transcription_group = SettingCardGroup(self._("转录设置"), self.scroll_widget)
         
         # 高级设置组
-        self.advanced_group = SettingCardGroup("高级设置", self.scroll_widget)
+        self.advanced_group = SettingCardGroup(self._("高级设置"), self.scroll_widget)
     
     def _init_cards(self):
         """初始化所有配置卡片"""
@@ -134,8 +148,8 @@ class SettingsView(ScrollArea):
         self.model_choice_card = ModelSelectionCard(
             cfg.model_name,
             FluentIcon.LIBRARY,
-            "模型选择",
-            "模型越大，转录速度越慢，但准确率越高",
+            self._("模型选择"),
+            self._("模型越大，转录速度越慢，但准确率越高"),
             model_choices,
             self.model_group
         )
@@ -143,10 +157,10 @@ class SettingsView(ScrollArea):
         
         # 模型目录设置
         self.model_directory_card = PushSettingCard(
-            "选择目录",
+            self._("选择目录"),
             FluentIcon.FOLDER,
-            "模型目录",
-            "设置模型文件的存储位置",
+            self._("模型目录"),
+            self._("设置模型文件的存储位置"),
             self.model_group
         )
         self.model_directory_card.clicked.connect(self._on_select_model_directory)
@@ -158,19 +172,19 @@ class SettingsView(ScrollArea):
         # 获取初始环境信息
         env_info = self.environment_service.get_environment_info()
         # 设置初始设备名称为默认值，将在 _update_cuda_status_ui 中更新
-        initial_device_name = "CPU"
+        initial_device_name = "CPU" # This will be updated by _update_cuda_status_ui
 
         # 创建PushSettingCard而不是SettingCard（类似于输出目录卡片）
         self.device_info_card = PushSettingCard(
-            "启用CUDA加速", # 初始按钮文本（将在_update_cuda_status_ui中更新）
+            self._("启用CUDA加速"), # 初始按钮文本（将在_update_cuda_status_ui中更新）
             FluentIcon.VIDEO,
-            "转录设备",
-            f"当前设备: {initial_device_name}", # 初始设备名称作为内容
+            self._("转录设备"),
+            self._("当前设备: {device_name}").format(device_name=initial_device_name), # 初始设备名称作为内容
             self.transcription_group
         )
         
         # 创建PrimaryPushButton并替换原有按钮
-        primary_button = PrimaryPushButton("启用CUDA加速", self.device_info_card)
+        primary_button = PrimaryPushButton(self._("启用CUDA加速"), self.device_info_card)
         primary_button.clicked.connect(self._on_toggle_gpu_preference_clicked) # 修改连接的槽函数
         
         # 获取卡片布局
@@ -211,37 +225,46 @@ class SettingsView(ScrollArea):
         self.transcription_group.addSettingCard(self.device_info_card)
         
         # 语言选择
-        languages = [Language.display_name(lang.value) for lang in Language]
+        # languages = [Language.display_name(lang.value) for lang in Language] # 旧代码
+        languages_display = []
+        self.language_enum_map = {} # 用于从显示名称映射回枚举值
+        for lang_enum_member in Language:
+            lang_value = lang_enum_member.value # "auto", "zh_CN", "en"
+            translation_key = f"language_{lang_value.lower()}"
+            display_name = self._(translation_key)
+            languages_display.append(display_name)
+            self.language_enum_map[display_name] = lang_enum_member
+
         self.language_card = ComboBoxSettingCard(
-            cfg.default_language,
+            cfg.default_language, # ConfigItem for binding
             FluentIcon.LANGUAGE,
-            "语言",
-            "选择音频的主要语言，自动检测可能不够准确",
-            languages,
+            self._("语言"),
+            self._("选择音频的主要语言，自动检测可能不够准确"),
+            languages_display, # 使用翻译后的列表
             self.transcription_group
         )
-        # Removed connection: lambda text: self.config_service.set_default_language(text)
+        # The actual value setting will be handled by cfg.default_language.valueChanged signal
         self.transcription_group.addSettingCard(self.language_card)
         
         # 输出格式设置
-        formats = [fmt.value.upper() for fmt in OutputFormat]
+        formats = [fmt.value.upper() for fmt in OutputFormat] # 通常格式值本身不需要翻译
         self.format_card = ComboBoxSettingCard(
             cfg.default_format,
             FluentIcon.DOCUMENT,
-            "输出格式",
-            "选择转录结果的输出格式",
+            self._("输出格式"),
+            self._("选择转录结果的输出格式"),
             formats,
             self.transcription_group
         )
-        # Removed connection: lambda text: self.config_service.set_default_format(text.lower())
         self.transcription_group.addSettingCard(self.format_card)
         
         # 输出目录设置
+        output_dir_content = cfg.output_directory.value if cfg.output_directory.value else self._("默认（输出至与源文件相同目录）")
         self.output_directory_card = PushSettingCard(
-            "选择目录",
+            self._("选择目录"),
             FluentIcon.FOLDER,
-            "输出目录",
-            cfg.output_directory.value if cfg.output_directory.value else "默认（输出至与源文件相同目录）",
+            self._("输出目录"),
+            output_dir_content,
             self.transcription_group
         )
         self.output_directory_card.clicked.connect(self._on_select_output_directory)
@@ -249,7 +272,7 @@ class SettingsView(ScrollArea):
         # 添加重置按钮
         self.reset_output_dir_button = TransparentToolButton(FluentIcon.SYNC, self)
         self.reset_output_dir_button.setFixedSize(35, 35)
-        self.reset_output_dir_button.setToolTip("重置为默认")
+        self.reset_output_dir_button.setToolTip(self._("重置为默认"))
         self.reset_output_dir_button.clicked.connect(self._on_reset_output_directory)
         
         # 获取卡片布局
@@ -272,29 +295,27 @@ class SettingsView(ScrollArea):
         
         # 任务类型设置
         tasks = [
-            "转录 (transcribe)",
-            "翻译成英文 (translate)"
+            self._("转录 (transcribe)"),
+            self._("翻译成英文 (translate)")
         ]
         self.task_card = ComboBoxSettingCard(
             cfg.task,
             FluentIcon.LANGUAGE,
-            "任务类型",
-            "选择转录或翻译任务",
-            tasks,
+            self._("任务类型"),
+            self._("选择转录或翻译任务"),
+            tasks, # 这些文本也会被babel提取
             self.transcription_group
         )
-        # Removed connection: lambda text: self.config_service.set_task(text.split(" ")[0])
         self.transcription_group.addSettingCard(self.task_card)
         
         # 标点符号设置
         self.punctuation_card = SwitchSettingCard(
             FluentIcon.EDIT,
-            "标点符号",
-            "在转录结果中添加标点符号",
+            self._("标点符号"),
+            self._("在转录结果中添加标点符号"),
             configItem=cfg.punctuation,
             parent=self.transcription_group
         )
-        # Removed connection: lambda checked: self.config_service.set_punctuation(checked)
         self.transcription_group.addSettingCard(self.punctuation_card)
 
     def _init_advanced_cards(self):
@@ -303,67 +324,62 @@ class SettingsView(ScrollArea):
         self.beam_size_card = RangeSettingCard(
             cfg.beam_size,
             FluentIcon.SEARCH,
-            "波束搜索宽度",
-            "值越大准确性越高但速度越慢（建议值：5）",
+            self._("波束搜索宽度"),
+            self._("值越大准确性越高但速度越慢（建议值：5）"),
             self.advanced_group
         )
-        # Removed connection: lambda value: self.config_service.set_beam_size(value)
         self.advanced_group.addSettingCard(self.beam_size_card)
         
         # 温度设置
         self.temperature_card = DoubleSpinBoxSettingCard(
             cfg.temperature,
             FluentIcon.CALORIES,
-            "采样温度",
-            "控制生成的随机性，0表示确定性输出（建议值：0.0-0.4）",
+            self._("采样温度"),
+            self._("控制生成的随机性，0表示确定性输出（建议值：0.0-0.4）"),
             minimum=0.0,
             maximum=1.0,
             decimals=2,
             step=0.05,
             parent=self.advanced_group
         )
-        # Removed connection: lambda value: self.config_service.set_temperature(value)
         self.advanced_group.addSettingCard(self.temperature_card)
         
         # 基于前文预测设置
         self.condition_card = SwitchSettingCard(
             FluentIcon.LINK,
-            "基于前文预测",
-            "使用前文内容提高转录连贯性",
+            self._("基于前文预测"),
+            self._("使用前文内容提高转录连贯性"),
             configItem=cfg.condition_on_previous_text,
             parent=self.advanced_group
         )
-        # Removed connection: lambda checked: self.config_service.set_condition_on_previous_text(checked)
         self.advanced_group.addSettingCard(self.condition_card)
         
         # 计算精度设置 (选项将在 _update_compute_precision_options 中动态过滤)
         self.compute_type_card = ComboBoxSettingCard(
             cfg.compute_type, # ConfigItem for value binding
             FluentIcon.SPEED_HIGH,
-            "计算精度",
-            "选择计算精度", # Default description, will be updated dynamically
+            self._("计算精度"),
+            self._("选择计算精度"), # Default description, will be updated dynamically
             [ct.value for ct in ComputeType], # Pass all possible options initially
             self.advanced_group
         )
-        # Removed connections related to compute_type_card signals
         self.advanced_group.addSettingCard(self.compute_type_card)
         
         # 单词时间戳设置
         self.word_timestamps_card = SwitchSettingCard(
             FluentIcon.STOP_WATCH,
-            "单词时间戳",
-            "生成单词级别的时间戳信息",
+            self._("单词时间戳"),
+            self._("生成单词级别的时间戳信息"),
             configItem=cfg.word_timestamps,
             parent=self.advanced_group
         )
-        # Removed connection: lambda checked: self.config_service.set_word_timestamps(checked)
         self.advanced_group.addSettingCard(self.word_timestamps_card)
         
         # VAD过滤设置
         self.vad_card = SwitchSettingCard(
             FluentIcon.FILTER,
-            "VAD过滤",
-            "过滤无语音部分，提高转录质量",
+            self._("VAD过滤"),
+            self._("过滤无语音部分，提高转录质量"),
             configItem=cfg.vad_filter, # 恢复绑定
             parent=self.advanced_group
         )
@@ -374,15 +390,14 @@ class SettingsView(ScrollArea):
         self.no_speech_card = DoubleSpinBoxSettingCard(
             cfg.no_speech_threshold,
             FluentIcon.MICROPHONE,
-            "无语音阈值",
-            "控制无语音检测的灵敏度，值越低越敏感（建议值：0.6）",
+            self._("无语音阈值"),
+            self._("控制无语音检测的灵敏度，值越低越敏感（建议值：0.6）"),
             minimum=0.1,
             maximum=1.0,
             decimals=2,
             step=0.05,
             parent=self.advanced_group
         )
-        # Removed connection: lambda value: self.config_service.set_no_speech_threshold(value)
         self.advanced_group.addSettingCard(self.no_speech_card)
         
         # 根据VAD过滤的初始状态设置无语音阈值的启用状态
@@ -444,10 +459,10 @@ class SettingsView(ScrollArea):
         self.reset_button_layout.setAlignment(Qt.AlignCenter)
         
         self.reset_button = PushSettingCard(
-            "恢复默认设置",
+            self._("恢复默认设置"),
             FluentIcon.SETTING,
-            "恢复所有设置",
-            "将所有设置恢复为默认值",
+            self._("恢复所有设置"),
+            self._("将所有设置恢复为默认值"),
             self.scroll_widget
         )
         
@@ -492,7 +507,7 @@ class SettingsView(ScrollArea):
         """模型下载错误事件"""
         # 使用错误处理服务
         error_info = ErrorInfo(
-            message=f"模型下载失败: {event.model_name}",
+            message=self._("模型下载失败: {model_name}").format(model_name=event.model_name),
             category=ErrorCategory.MODEL,
             priority=ErrorPriority.MEDIUM,
             code="MODEL_DOWNLOAD_ERROR",
@@ -504,7 +519,7 @@ class SettingsView(ScrollArea):
         """选择模型目录"""
         folder = QFileDialog.getExistingDirectory(
             self,
-            "选择模型目录",
+            self._("选择模型目录"),
             cfg.model_path.value
         )
         
@@ -521,15 +536,15 @@ class SettingsView(ScrollArea):
             
             # 显示成功提示
             self._publish_success_notification(
-                NotificationTitle.NONE_TITLE.value,
-                NotificationContent.SETTINGS_SAVED.value.format(setting_name="模型目录")
+                self._(NotificationTitle.NONE_TITLE.value), # Assuming NONE_TITLE is "" or similar
+                self._(NotificationContent.SETTINGS_SAVED.value).format(setting_name=self._("模型目录"))
             )
     
     def _on_select_output_directory(self):
         """选择输出目录"""
         folder = QFileDialog.getExistingDirectory(
             self,
-            "选择输出目录",
+            self._("选择输出目录"),
             str(Path.home())
         )
         
@@ -539,19 +554,19 @@ class SettingsView(ScrollArea):
             
             # 显示成功提示
             self._publish_success_notification(
-                NotificationTitle.NONE_TITLE.value,
-                NotificationContent.SETTINGS_SAVED.value.format(setting_name="输出目录")
+                self._(NotificationTitle.NONE_TITLE.value),
+                self._(NotificationContent.SETTINGS_SAVED.value).format(setting_name=self._("输出目录"))
             )
     
     def _on_reset_output_directory(self):
         """重置输出目录"""
-        self.output_directory_card.setContent("默认（与源文件相同目录）")
+        self.output_directory_card.setContent(self._("默认（与源文件相同目录）"))
         self.config_service.set_output_directory("")
         
         # 显示成功提示
         self._publish_success_notification(
-            NotificationTitle.NONE_TITLE.value,
-            NotificationContent.OUTPUT_DIR_RESET.value
+            self._(NotificationTitle.NONE_TITLE.value),
+            self._(NotificationContent.OUTPUT_DIR_RESET.value)
         )
     
     def _on_vad_filter_changed(self, checked: bool):
@@ -567,8 +582,8 @@ class SettingsView(ScrollArea):
         
         # 显示成功提示
         self._publish_success_notification(
-            NotificationTitle.NONE_TITLE.value,
-            NotificationContent.SETTINGS_RESET.value
+            "",
+            self._(NotificationContent.SETTINGS_RESET.value)
         )
 
     def _on_model_downloading(self, event):
@@ -577,8 +592,6 @@ class SettingsView(ScrollArea):
 
     def _on_download_completed(self, event):
         """模型下载完成事件"""
-        # 触发刷新已安装的模型
-        self._refresh_ui()
         
         # 检查下载是否成功
         if not event.success:
@@ -600,7 +613,7 @@ class SettingsView(ScrollArea):
         """CUDA环境下载完成回调"""
         logger.info(f"CUDA环境下载完成: success={event.success}, error={event.error}")
         if not event.success:
-             self._publish_error_notification(NotificationTitle.CUDA_ENV_ERROR.value, f"CUDA环境下载失败: {event.error}")
+             self._publish_error_notification(self._(NotificationTitle.CUDA_ENV_ERROR.value), self._("CUDA环境下载失败: {error}").format(error=event.error))
         # 无论结果如何都更新UI（下载失败时会显示按钮或转换到安装状态）
         self._update_cuda_status_ui()
 
@@ -608,8 +621,8 @@ class SettingsView(ScrollArea):
         """CUDA环境下载错误回调"""
         logger.error(f"CUDA环境下载错误: {event.error}")
         self._publish_error_notification(
-            NotificationTitle.CUDA_ENV_ERROR.value,
-            f"CUDA环境下载错误: {event.error}"
+            self._(NotificationTitle.CUDA_ENV_ERROR.value),
+            self._("CUDA环境下载错误: {error}").format(error=event.error)
         )
         self._update_cuda_status_ui() # 恢复UI状态
 
@@ -625,9 +638,9 @@ class SettingsView(ScrollArea):
 
     def _on_cuda_env_install_completed(self, event):
         """CUDA环境安装完成事件"""
-        logger.info(f"CUDA环境安装完成: success={event.success}, error={event.error}")
+        logger.info(f"CUDA环境安装完成: success={event.success}, error={event.error}") # 日志不翻译
         if not event.success:
-             self._publish_error_notification(NotificationTitle.CUDA_ENV_ERROR.value, f"CUDA环境安装失败: {event.error}")
+             self._publish_error_notification(self._(NotificationTitle.CUDA_ENV_ERROR.value), self._("CUDA环境安装失败: {error}").format(error=event.error))
         # 刷新环境信息并更新UI
         self.environment_service.refresh() # 刷新在内部处理
 
@@ -642,14 +655,14 @@ class SettingsView(ScrollArea):
         if env_info.is_windows and env_info.has_gpu and not env_info.can_use_gpu_acceleration():
             logger.info("GPU可用但环境未就绪，触发CUDA环境下载")
             # 添加即时UI反馈
-            self.device_info_card.button.setText("正在准备...")
+            self.device_info_card.button.setText(self._("正在准备..."))
             self.device_info_card.button.setEnabled(False) # 临时禁用防止重复点击
             success = self.model_service.download_cuda_environment()
             if not success:
                 # 如果立即启动失败，通知用户并恢复按钮状态
                 self._publish_error_notification(
-                    NotificationTitle.CUDA_ENV_ERROR.value,
-                    "启动CUDA环境下载失败"
+                    self._(NotificationTitle.CUDA_ENV_ERROR.value),
+                    self._("启动CUDA环境下载失败")
                 )
                 self._update_cuda_status_ui() # 恢复UI状态
             # 注意：下载是异步的，后续状态更新依赖事件（例如is_downloading变为True）
@@ -659,13 +672,13 @@ class SettingsView(ScrollArea):
         # 禁用按钮方案时永远不会触发，但暂时保留，方便日后切换
         logger.info("切换GPU偏好设置")
         if current_device_pref == Device.CUDA.value:
-            logger.info("当前偏好为CUDA，切换到CPU")
+            logger.info("当前偏好为CUDA，切换到CPU") # 日志不翻译
             self.config_service.set_device(Device.CPU.value)
-            self._publish_success_notification("设置更新成功", "转录设备已切换为 CPU")
+            self._publish_success_notification(self._("设置更新成功"), self._("转录设备已切换为 CPU"))
         else:
-            logger.info(f"当前偏好为 {current_device_pref}，切换到CUDA")
+            logger.info(f"当前偏好为 {current_device_pref}，切换到CUDA") # 日志不翻译
             self.config_service.set_device(Device.CUDA.value)
-            self._publish_success_notification("设置更新成功", "转录设备已切换为 GPU")
+            self._publish_success_notification(self._("设置更新成功"), self._("转录设备已切换为 GPU"))
             
         # 立即更新UI以反映变化
         self._update_cuda_status_ui()
@@ -715,49 +728,49 @@ class SettingsView(ScrollArea):
 
     def _set_ui_for_gpu_unavailable(self, button):
         """Sets UI elements when GPU hardware is unavailable."""
-        button.setText("CUDA加速不可用")
-        button.setToolTip("仅支持Windows + NVIDIA GPU")
+        button.setText(self._("CUDA加速不可用"))
+        button.setToolTip(self._("仅支持Windows + NVIDIA GPU"))
         button.setEnabled(False)
-        return "CPU (未检测到兼容GPU)"
+        return self._("CPU (未检测到兼容GPU)")
 
     def _set_ui_for_busy(self, button, is_downloading):
         """Sets UI elements when CUDA environment is downloading or installing."""
         if is_downloading:
-            button.setText("正在下载...")
-            button.setToolTip("CUDA环境下载中")
-            device_display_name = "CPU (CUDA环境下载中)"
+            button.setText(self._("正在下载..."))
+            button.setToolTip(self._("CUDA环境下载中"))
+            device_display_name = self._("CPU (CUDA环境下载中)")
         else: # is_installing
-            button.setText("正在安装...")
-            button.setToolTip("CUDA环境安装中")
-            device_display_name = "CPU (CUDA环境安装中)"
+            button.setText(self._("正在安装..."))
+            button.setToolTip(self._("CUDA环境安装中"))
+            device_display_name = self._("CPU (CUDA环境安装中)")
         button.setEnabled(False)
         return device_display_name
 
     def _set_ui_for_device_switch(self, button, current_device_pref, env_info):
         """用于可切换设备时的UI显示"""
         if current_device_pref == Device.CUDA.value:
-            button.setText("禁用GPU加速")
-            button.setToolTip("切换回CPU进行转录")
-            device_display_name = f"NVIDIA GPU ({env_info.gpu_name})"
+            button.setText(self._("禁用GPU加速"))
+            button.setToolTip(self._("切换回CPU进行转录"))
+            device_display_name = self._("NVIDIA GPU ({gpu_name})").format(gpu_name=env_info.gpu_name)
         else: # 偏好是 CPU 或 auto
-            button.setText("启用GPU加速")
-            button.setToolTip("切换到GPU进行转录")
-            device_display_name = "CPU"
+            button.setText(self._("启用GPU加速"))
+            button.setToolTip(self._("切换到GPU进行转录"))
+            device_display_name = self._("CPU")
         button.setEnabled(True)
         return device_display_name
     
     def _set_ui_for_gpu_ready(self, button, current_device_pref, env_info):
-        device_display_name = f"NVIDIA GPU ({env_info.gpu_name})"
-        button.setText("GPU加速已启用")
+        device_display_name = self._("NVIDIA GPU ({gpu_name})").format(gpu_name=env_info.gpu_name)
+        button.setText(self._("GPU加速已启用"))
         button.setEnabled(False)
         return device_display_name
 
     def _set_ui_for_env_not_ready(self, button):
         """Sets UI elements when GPU hardware is available but CUDA env is not ready."""
-        button.setText("启用CUDA加速")
-        button.setToolTip("下载并安装必要的CUDA环境")
+        button.setText(self._("启用CUDA加速"))
+        button.setToolTip(self._("下载并安装必要的CUDA环境"))
         button.setEnabled(True) # Allow user to click to trigger download
-        return "CPU (CUDA环境未就绪)"
+        return self._("CPU (CUDA环境未就绪)")
 
     def _update_cuda_status_ui(self):
         """根据环境、配置和下载/安装状态更新CUDA按钮和进度标签 (Refactored)"""
@@ -787,9 +800,9 @@ class SettingsView(ScrollArea):
                 device_display_name = self._set_ui_for_env_not_ready(button)
         # Update device name content
         try:
-            self.device_info_card.setContent(f"当前设备: {device_display_name}")
+            self.device_info_card.setContent(self._("当前设备: {device_name}").format(device_name=device_display_name))
         except AttributeError:
-            logger.warning("PushSettingCard可能没有setContent方法，无法更新设备显示名称。")
+            logger.warning("PushSettingCard可能没有setContent方法，无法更新设备显示名称。") # 日志不翻译
             pass
 
         # Update progress label visibility
@@ -810,20 +823,20 @@ class SettingsView(ScrollArea):
         gpu_acceleration_actually_available = env_info.can_use_gpu_acceleration()
 
         # 确定最终生效的模式：必须实际可用 且 用户意图是使用 CUDA
-        should_use_gpu_mode = gpu_acceleration_actually_available and current_device_pref == Device.CUDA.value
+        should_use_gpu_mode = gpu_acceleration_actually_available and not current_device_pref == Device.CPU.value
 
         precisions = []
         precision_description = ""
 
         if should_use_gpu_mode:
             precisions = [precision.value for precision in ComputeType]
-            precision_description = "选择计算精度（GPU加速已启用）"
-            logger.debug("更新计算精度选项为 GPU 模式")
+            precision_description = self._("选择计算精度（GPU加速已启用）")
+            logger.debug("更新计算精度选项为 GPU 模式") # 日志不翻译
         else:
             # CPU 模式下支持 float32 和 int8
             precisions = [ComputeType.FLOAT32.value, ComputeType.INT8.value]
-            precision_description = "选择计算精度（CPU模式，推荐int8）"
-            logger.debug("更新计算精度选项为 CPU 模式")
+            precision_description = self._("选择计算精度（CPU模式，推荐int8）")
+            logger.debug("更新计算精度选项为 CPU 模式") # 日志不翻译
 
         # 获取当前配置值
         current_compute_type = self.config_service.get_compute_type()

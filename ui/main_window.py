@@ -3,18 +3,15 @@
 
 """
 主窗口 - 应用程序的主窗口
-    UI组件的 Ioc 原则：当 UI 组件使用到服务类依赖的时候，通过构造函数让框架自动注入，但是 UI 组件之间的装配是手动完成
 """
 
-from PySide6.QtCore import Signal, Qt, Slot, QSize, QObject
+from PySide6.QtCore import Signal, Qt, Slot
 from dependency_injector.wiring import Provide, inject
 
 from qfluentwidgets import (
     NavigationItemPosition, FluentWindow, FluentIcon,
-    setTheme, Theme, InfoBar, InfoBarPosition, NavigationInterface, MessageBox
+    setTheme, Theme, InfoBar, InfoBarPosition
 )
-
-from qframelesswindow import AcrylicWindow
 
 from core.models.notification_model import NotificationContent, NotificationTitle
 from ui.views.home_view import HomeView
@@ -24,8 +21,8 @@ from core.services.model_management_service import ModelManagementService
 from core.services.notification_service import NotificationService
 from core.services.task_service import TaskService
 from core.services.config_service import ConfigService
+from core.containers import AppContainer
 from core.models.task_model import ProcessStatus
-from core.models.error_model import ErrorPriority, ErrorCategory
 from core.events import event_bus, EventTypes, TaskStateChangedEvent, TaskAddedEvent
 from core.models.config import cfg
 
@@ -38,15 +35,27 @@ class MainWindow(FluentWindow):
     # 信号定义
     filesDropped = Signal(list)  # 文件拖放信号，参数为文件路径列表
     
-    def __init__(self):
+    @inject
+    def __init__(self,
+                 translator: callable = Provide[AppContainer.translation_function],
+                 model_service: ModelManagementService = Provide[AppContainer.model_service],
+                 notification_service: NotificationService = Provide[AppContainer.notification_service],
+                 task_service: TaskService = Provide[AppContainer.task_service],
+                 config_service: ConfigService = Provide[AppContainer.config_service]
+                 ):
         """初始化主窗口"""
         super().__init__()
+        self._ = translator # 赋值翻译函数
         
         # 设置对象名称，用于通知管理器识别主窗口
         self.setObjectName("mainWindow")
         
-        # 初始化服务
-        self._init_services()
+        # 初始化服务 (通过构造函数注入)
+        self.model_service = model_service
+        self.notification_service = notification_service
+        self.task_service = task_service
+        self.config_service = config_service
+        # self._init_services() # 不再需要单独调用
 
         # 初始化UI
         self._init_ui()
@@ -57,24 +66,25 @@ class MainWindow(FluentWindow):
         # 设置信号连接
         self._setup_connections()
 
-    @inject
-    def _init_services(
-        self, 
-        model_service: ModelManagementService = Provide["model_service"],
-        notification_service: NotificationService = Provide["notification_service"],
-        task_service: TaskService = Provide["task_service"],
-        config_service: ConfigService = Provide["config_service"]
-    ):
-        """初始化服务，通过依赖注入获取"""
-        # 使用依赖注入获取服务
-        self.model_service = model_service
-        self.notification_service = notification_service
-        self.task_service = task_service
-        self.config_service = config_service
+    # @inject # _init_services 方法不再需要，服务已在 __init__ 中注入
+    # def _init_services(
+    #     self,
+    #     model_service: ModelManagementService = Provide["model_service"],
+    #     notification_service: NotificationService = Provide["notification_service"],
+    #     task_service: TaskService = Provide["task_service"],
+    #     config_service: ConfigService = Provide["config_service"]
+    # ):
+    #     """初始化服务，通过依赖注入获取"""
+    #     # 使用依赖注入获取服务
+    #     self.model_service = model_service
+    #     self.notification_service = notification_service
+    #     self.task_service = task_service
+    #     self.config_service = config_service
     
     def _init_ui(self):
         """初始化UI"""
         # 创建视图 - 先创建任务视图，再创建主页视图
+        # 注意：TaskView, HomeView, SettingsView 的构造函数也需要修改以接收 translator
         self.task_view = TaskView(self)
         self.task_view.setObjectName("task-view")
         
@@ -90,35 +100,44 @@ class MainWindow(FluentWindow):
     def _init_navigation(self):
         """初始化导航"""
         # 添加主页
-        self.addSubInterface(self.home_view, FluentIcon.HOME, "首页")
+        self.addSubInterface(self.home_view, FluentIcon.HOME, self._("首页"))
         
         # 添加任务视图
-        self.addSubInterface(self.task_view, FluentIcon.DOCUMENT, "任务列表")
+        self.addSubInterface(self.task_view, FluentIcon.DOCUMENT, self._("任务列表"))
         
         # 添加分隔线
         self.navigationInterface.addSeparator()
+
+        # 添加语言切换按钮
+        self.navigationInterface.addItem(
+            routeKey='language_switcher',
+            icon=FluentIcon.LANGUAGE,
+            text=self._('切换语言'),
+            onClick=self._toggle_language,
+            position=NavigationItemPosition.BOTTOM
+        )
         
-        # 添加主题切换按钮（在底部，设置按钮上方）
+        # 添加主题切换按钮
         self.navigationInterface.addItem(
             routeKey='theme',
             icon=FluentIcon.CONSTRACT,
-            text='深浅主题',
+            text=self._('深浅主题'),
             onClick=self._toggle_theme,
             position=NavigationItemPosition.BOTTOM
         )
         
         # 添加设置（在底部）
         self.addSubInterface(
-            self.settings_view, 
-            FluentIcon.SETTING, 
-            "设置", 
+            self.settings_view,
+            FluentIcon.SETTING,
+            self._("设置"),
             NavigationItemPosition.BOTTOM
         )
     
     def _init_window(self):
         """初始化窗口"""
         # 设置窗口标题
-        self.setWindowTitle("Faster Vox - 语音转文字工具")
+        self.setWindowTitle(self._("Faster Vox - 语音转文字工具"))
         
         # 设置窗口最小尺寸
         self.setMinimumSize(900, 650)
@@ -226,6 +245,23 @@ class MainWindow(FluentWindow):
         
         # 保存主题设置
         self.config_service.set_theme(new_theme)
+
+    def _toggle_language(self):
+        """切换界面语言并提示用户重启"""
+        current_lang = self.config_service.get_ui_language()
+        
+        title = self._("语言设置")
+        if current_lang == "zh_CN":
+            new_lang = "en_US"
+            content = "Interface language has been switched to English. Restart to take effect."
+        else:
+            new_lang = "zh_CN"
+            content = "界面语言已切换为中文，重启后生效。"
+        
+        self.config_service.set_ui_language(new_lang)
+        
+        # 使用 InfoBar 显示通知
+        self._display_info(title, content)
 
     def _on_system_error(self, error_message: str):
         """系统错误回调
