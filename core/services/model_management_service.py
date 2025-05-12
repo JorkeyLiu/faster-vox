@@ -549,7 +549,8 @@ class ModelManagementService(QObject):
         ModelSize.BASE.value: "gpustack/faster-whisper-base",
         ModelSize.SMALL.value: "gpustack/faster-whisper-small",
         ModelSize.MEDIUM.value: "gpustack/faster-whisper-medium",
-        ModelSize.LARGE_V3.value: "gpustack/faster-whisper-large-v3"
+        ModelSize.LARGE.value: "gpustack/faster-whisper-large-v3",
+        ModelSize.DISTIL_LARGE.value: "gpustack/faster-distil-whisper-large-v2",
     }
     
     # 预编译应用ModelScope模型ID
@@ -821,9 +822,14 @@ class ModelManagementService(QObject):
         for item in self.models_dir.iterdir():
             if item.is_dir():
                 # 检查目录名是否匹配模型格式
-                model_match = re.match(r'faster-whisper-(.+)', item.name)
+                model_match = re.match(r'(?:faster-whisper-|faster-distil-whisper-)(.+)', item.name)
                 if model_match:
-                    model_name = model_match.group(1)
+                    suffix = model_match.group(1)
+                    if item.name.startswith('faster-distil-whisper-'):
+                        model_name = f'distil-{suffix}'
+                    else:
+                        model_name = suffix
+                    logger.debug(f"构建的模型名称: {model_name}")
                     # 检查是否有model.bin文件
                     model_bin_path = item / "model.bin"
                     exists = model_bin_path.exists() and model_bin_path.is_file() and model_bin_path.stat().st_size > 0
@@ -924,7 +930,12 @@ class ModelManagementService(QObject):
             self._publish_model_data_changed_event(model_name, model_data)
             
             # 构建保存路径
-            save_path = self.models_dir / f"faster-whisper-{model_name}"
+            if model_name.startswith("distil-"):
+                suffix = model_name.split("distil-", 1)[1]
+                folder_name = f"faster-distil-whisper-{suffix}"
+            else:
+                folder_name = f"faster-whisper-{model_name}"
+            save_path = self.models_dir / folder_name
             
             # 检查环境 - 使用环境信息对象
             is_windows_with_cuda = self.environment_info.is_windows and self.environment_info.has_gpu
@@ -1269,7 +1280,12 @@ class ModelManagementService(QObject):
         # 获取模型路径
         model_path = model_data.model_path
         if not model_path:
-            model_path = str(self.models_dir / f"faster-whisper-{model_name}")
+            if model_name.startswith("distil-"):
+                suffix = model_name.split("distil-", 1)[1]
+                folder_name = f"faster-distil-whisper-{suffix}"
+            else:
+                folder_name = f"faster-whisper-{model_name}"
+            model_path = str(self.models_dir / folder_name)
         
         # 验证模型路径
         if not self._check_model_path(model_path):

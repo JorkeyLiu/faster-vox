@@ -16,7 +16,8 @@ class ModelSize(Enum):
     BASE = "base"
     SMALL = "small"
     MEDIUM = "medium"
-    LARGE_V3 = "large-v3"
+    LARGE = "large-v3"
+    DISTIL_LARGE = "distil-large-v2"
     
     @staticmethod
     def get_all() -> List[str]:
@@ -39,15 +40,17 @@ class ModelSize(Enum):
         """
         name = name.lower()
         if name == ModelSize.TINY.value:
-            return "Tiny"
+            return "tiny"
         elif name == ModelSize.BASE.value:
-            return "Base"
+            return "base"
         elif name == ModelSize.SMALL.value:
-            return "Small"
+            return "small"
         elif name == ModelSize.MEDIUM.value:
-            return "Medium"
-        elif name == ModelSize.LARGE_V3.value:
-            return "Large-V3"
+            return "medium"
+        elif name == ModelSize.LARGE.value:
+            return "large-v3"
+        elif name == ModelSize.DISTIL_LARGE.value:
+            return "distil-large-v2"
         else:
             return name
     
