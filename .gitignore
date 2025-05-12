@@ -8,6 +8,10 @@ __pycache__/
 *.mo
 *.pot
 
+# PyInstaller
+dist
+build
+
 # PEP 582; used by PDM, PEP 582 only
 __pypackages__/
 

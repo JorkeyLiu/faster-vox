@@ -5,8 +5,6 @@
 应用程序配置模型和常量定义
 """
 
-import os
-import json
 from enum import Enum
 from pathlib import Path
 import platform
@@ -173,7 +171,80 @@ class Language(Enum):
 
 class AppConfig(QConfig):
     """应用程序配置类"""
+
+    # --- Define ConfigItems as class attributes ---
+    # QConfig.toDict() 内部迭代的是 self._cfg.__class__ (即 AppConfig 类) 的属性，而不是 self._cfg (即 AppConfig 实例) 的属性。
+    # 常规设置
+    theme = OptionsConfigItem("general", "theme", "light", OptionsValidator(["light", "dark"]))
+    # ui_language will be defined after _get_initial_ui_language is made static
+    last_output_dir = ConfigItem("general", "last_output_dir", str(Path.home() / "Documents"))
     
+    # 转录设置
+    model_name = OptionsConfigItem(
+        "transcription", "model_name", ModelSize.MEDIUM,
+        OptionsValidator(ModelSize), EnumSerializer(ModelSize)
+    )
+    model_path = ConfigItem(
+        "transcription", "model_path",
+        str(APP_MODELS_DIR)
+    )
+    compute_type = OptionsConfigItem(
+        "transcription", "compute_type", ComputeType.FLOAT16,
+        OptionsValidator(ComputeType), EnumSerializer(ComputeType)
+    )
+    device = OptionsConfigItem(
+        "transcription", "device", Device.AUTO,
+        OptionsValidator(Device), EnumSerializer(Device)
+    )
+    cpu_threads = RangeConfigItem("transcription", "cpu_threads", 4, RangeValidator(1, 16))
+    num_workers = RangeConfigItem("transcription", "num_workers", 1, RangeValidator(1, 8))
+    beam_size = RangeConfigItem("transcription", "beam_size", 5, RangeValidator(1, 10))
+    vad_filter = ConfigItem("transcription", "vad_filter", True, BoolValidator())
+    word_timestamps = ConfigItem("transcription", "word_timestamps", True, BoolValidator())
+    punctuation = ConfigItem("transcription", "punctuation", False, BoolValidator())
+    
+    # 新增设置项
+    task = OptionsConfigItem("transcription", "task", "transcribe",
+                             OptionsValidator(["transcribe", "translate"]))
+    temperature = RangeConfigItem("transcription", "temperature", 0.0, RangeValidator(0.0, 1.0))
+    condition_on_previous_text = ConfigItem("transcription", "condition_on_previous_text",
+                                          True, BoolValidator())
+    no_speech_threshold = RangeConfigItem("transcription", "no_speech_threshold",
+                                         0.6, RangeValidator(0.1, 1.0))
+    
+    # 输出设置
+    default_format = OptionsConfigItem(
+        "output", "default_format", OutputFormat.SRT,
+        OptionsValidator(OutputFormat), EnumSerializer(OutputFormat)
+    )
+    default_language = OptionsConfigItem(
+        "output", "default_language", Language.AUTO,
+        OptionsValidator(Language), EnumSerializer(Language)
+    )
+    output_directory = ConfigItem("output", "output_directory", "", None)  # 指定输出目录，为空则使用源文件目录
+
+    @staticmethod
+    def _get_initial_ui_language() -> str:
+        """
+        Determines the initial UI language based on the system's default locale.
+        Defaults to 'en_US' if detection fails or language is not supported.
+        """
+        default_ui_lang = "en_US"
+        try:
+            lang_code, _ = locale.getdefaultlocale() # encoding is not used
+            if lang_code:
+                if lang_code.startswith('zh'):
+                    return "zh_CN"
+                elif lang_code.startswith('en'):
+                    return "en_US"
+            # If lang_code is None or not 'zh'/'en', return default
+            return default_ui_lang
+        except Exception as e:
+            logger.warning(f"Failed to determine system language: {e}. Defaulting UI language to '{default_ui_lang}'.")
+            return default_ui_lang
+
+    ui_language = OptionsConfigItem("general", "ui_language", _get_initial_ui_language(), OptionsValidator(["zh_CN", "en_US"]))
+
     def __init__(self):
         """初始化配置对象"""
         super().__init__()
@@ -183,56 +254,6 @@ class AppConfig(QConfig):
         
         # 确保配置目录存在
         self.config_dir.mkdir(parents=True, exist_ok=True)
-
-        # --- Define ConfigItems as instance attributes ---
-        # 常规设置
-        self.theme = OptionsConfigItem("general", "theme", "light", OptionsValidator(["light", "dark"]))
-        self.ui_language = OptionsConfigItem("general", "ui_language", self._get_initial_ui_language(), OptionsValidator(["zh_CN", "en_US"]))
-        self.last_output_dir = ConfigItem("general", "last_output_dir", str(Path.home() / "Documents"))
-        
-        # 转录设置
-        self.model_name = OptionsConfigItem(
-            "transcription", "model_name", ModelSize.MEDIUM,
-            OptionsValidator(ModelSize), EnumSerializer(ModelSize)
-        )
-        self.model_path = ConfigItem(
-            "transcription", "model_path",
-            str(APP_MODELS_DIR)
-        )
-        self.compute_type = OptionsConfigItem(
-            "transcription", "compute_type", ComputeType.FLOAT16,
-            OptionsValidator(ComputeType), EnumSerializer(ComputeType)
-        )
-        self.device = OptionsConfigItem(
-            "transcription", "device", Device.AUTO,
-            OptionsValidator(Device), EnumSerializer(Device)
-        )
-        self.cpu_threads = RangeConfigItem("transcription", "cpu_threads", 4, RangeValidator(1, 16))
-        self.num_workers = RangeConfigItem("transcription", "num_workers", 1, RangeValidator(1, 8))
-        self.beam_size = RangeConfigItem("transcription", "beam_size", 5, RangeValidator(1, 10))
-        self.vad_filter = ConfigItem("transcription", "vad_filter", True, BoolValidator())
-        self.word_timestamps = ConfigItem("transcription", "word_timestamps", True, BoolValidator())
-        self.punctuation = ConfigItem("transcription", "punctuation", False, BoolValidator())
-        
-        # 新增设置项
-        self.task = OptionsConfigItem("transcription", "task", "transcribe",
-                                 OptionsValidator(["transcribe", "translate"]))
-        self.temperature = RangeConfigItem("transcription", "temperature", 0.0, RangeValidator(0.0, 1.0))
-        self.condition_on_previous_text = ConfigItem("transcription", "condition_on_previous_text",
-                                              True, BoolValidator())
-        self.no_speech_threshold = RangeConfigItem("transcription", "no_speech_threshold",
-                                             0.6, RangeValidator(0.1, 1.0))
-        
-        # 输出设置
-        self.default_format = OptionsConfigItem(
-            "output", "default_format", OutputFormat.SRT,
-            OptionsValidator(OutputFormat), EnumSerializer(OutputFormat)
-        )
-        self.default_language = OptionsConfigItem(
-            "output", "default_language", Language.AUTO,
-            OptionsValidator(Language), EnumSerializer(Language)
-        )
-        self.output_directory = ConfigItem("output", "output_directory", "", None)  # 指定输出目录，为空则使用源文件目录
 
     def get_last_directory(self) -> str:
         """获取上次使用的目录"""
@@ -311,33 +332,14 @@ class AppConfig(QConfig):
         """获取输出目录"""
         return self.get(self.output_directory)
     
-    def _get_initial_ui_language(self) -> str:
-        """
-        Determines the initial UI language based on the system's default locale.
-        Defaults to 'en_US' if detection fails or language is not supported.
-        """
-        default_ui_lang = "en_US"
-        try:
-            lang_code, _ = locale.getdefaultlocale() # encoding is not used
-            if lang_code:
-                if lang_code.startswith('zh'):
-                    return "zh_CN"
-                elif lang_code.startswith('en'):
-                    return "en_US"
-            # If lang_code is None or not 'zh'/'en', return default
-            return default_ui_lang
-        except Exception as e:
-            logger.warning(f"Failed to determine system language: {e}. Defaulting UI language to '{default_ui_lang}'.")
-            return default_ui_lang
-    
     def reset_to_defaults(self) -> None:
         """恢复默认设置"""
         self.set(self.theme, "light")
-        initial_ui_lang = self._get_initial_ui_language()
+        initial_ui_lang = AppConfig._get_initial_ui_language() # Call as static method
         self.set(self.ui_language, initial_ui_lang)
         self.set(self.model_name, ModelSize.MEDIUM)
-        self.set(self.compute_type, ComputeType.INT8)
-        self.set(self.device, Device.CPU)
+        self.set(self.compute_type, ComputeType.INT8) # Default for reset might need review based on typical use
+        self.set(self.device, Device.AUTO) # Changed to AUTO as a more general default
         self.set(self.cpu_threads, 4)
         self.set(self.num_workers, 1)
         self.set(self.beam_size, 5)

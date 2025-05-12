@@ -34,7 +34,7 @@ from core.events import event_bus
 from core.events.event_types import (
     EventTypes, NotificationSuccessEvent, NotificationErrorEvent, ModelEvent, EnvironmentStatusEvent,
     ConfigChangedEvent, ErrorEvent
-) # 导入 qconfig
+)
 from qfluentwidgets import qconfig
 
 class SettingsView(ScrollArea):
@@ -89,21 +89,6 @@ class SettingsView(ScrollArea):
         # 初始化CUDA状态UI
         self._update_cuda_status_ui()
         self._update_compute_precision_options() # Add call here
-        
-    # @inject # _init_services 方法不再需要
-    # def _init_services(
-    #     self,
-    #     model_service: ModelManagementService = Provide[AppContainer.model_service],
-    #     environment_service: EnvironmentService = Provide[AppContainer.environment_service],
-    #     notification_service: NotificationService = Provide[AppContainer.notification_service],
-    #     error_service: ErrorHandlingService = Provide[AppContainer.error_handling_service],
-    #     config_service: ConfigService = Provide[AppContainer.config_service]
-    # ):
-    #     self.model_service = model_service
-    #     self.environment_service = environment_service
-    #     self.notification_service = notification_service
-    #     self.error_service = error_service
-    #     self.config_service = config_service
         
         # 订阅模型事件
         event_bus.subscribe(EventTypes.MODEL_DOWNLOAD_STARTED, self._on_model_downloading)

@@ -64,6 +64,7 @@ class TranscriptionParameters:
     compute_type: str = "float16"
     device: str = "auto"  # 新增设备选择参数
     use_precompiled: bool = False  # 是否使用预编译应用
+    apply_standard_formatting: bool = False  # 是否应用标准格式化（例如 --standard 预设）
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert parameters to dictionary.

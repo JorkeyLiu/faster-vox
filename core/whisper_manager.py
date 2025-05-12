@@ -8,8 +8,7 @@ Whisper管理器 - 混合架构设计，支持Python库和预编译应用
 
 import os
 import glob
-import sys
-import re
+import io
 import shutil
 import json
 import tempfile
@@ -604,19 +603,11 @@ class PrecompiledTranscriptionStrategy(TranscriptionStrategy):
                 cmd.extend(["--compute_type", str(context.parameters.compute_type)])
             if context.parameters.device:
                 cmd.extend(["--device", str(context.parameters.device)])
-            # 重新检查 language 参数（如果之前没有添加且非 auto）
-            # 注意：之前的代码在行 581-582 可能已经添加了 language，这里做一个补充检查以防万一
-            # 但更稳妥的方式是统一在这里处理 language
-            # 移除之前的 language 添加 (行 581-582)，统一在这里添加：
-            # if context.parameters.language and context.parameters.language.lower() != 'auto':
-            #    cmd.extend(["--language", context.parameters.language])
-            # --- 结束添加 ---
-
+            
             # 音频文件参数必须放在最后
             cmd.append(str(context.audio_file))
             
             # 执行命令
-            import io
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
