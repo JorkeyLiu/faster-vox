@@ -89,6 +89,7 @@ class SettingsView(ScrollArea):
         # 初始化CUDA状态UI
         self._update_cuda_status_ui()
         self._update_compute_precision_options() # Add call here
+        self._update_language_card_state(config_service.get_model_name())
         
         # 订阅模型事件
         event_bus.subscribe(EventTypes.MODEL_DOWNLOAD_STARTED, self._on_model_downloading)
@@ -211,12 +212,26 @@ class SettingsView(ScrollArea):
         
         # 语言选择
         # languages = [Language.display_name(lang.value) for lang in Language] # 旧代码
+        
+        # 定义语言显示名称的映射，这些将作为翻译的 msgid
+        # 注意：Language 枚举中的中文是 ZH = "zh"
+        language_display_key_map = {
+            Language.AUTO: "自动检测",
+            Language.ZH: "中文",
+            Language.EN: "英语",
+            Language.JA: "日语",
+            Language.KO: "韩语",
+            Language.FR: "法语",
+            Language.DE: "德语",
+            Language.ES: "西班牙语",
+        }
+
         languages_display = []
         self.language_enum_map = {} # 用于从显示名称映射回枚举值
         for lang_enum_member in Language:
-            lang_value = lang_enum_member.value # "auto", "zh_CN", "en"
-            translation_key = f"language_{lang_value.lower()}"
-            display_name = self._(translation_key)
+            # 从映射中获取原始的、将要被翻译的字符串
+            original_text = language_display_key_map.get(lang_enum_member, lang_enum_member.value)
+            display_name = self._(original_text) # 使用 self._() 进行翻译
             languages_display.append(display_name)
             self.language_enum_map[display_name] = lang_enum_member
 
@@ -224,7 +239,7 @@ class SettingsView(ScrollArea):
             cfg.default_language, # ConfigItem for binding
             FluentIcon.LANGUAGE,
             self._("语言"),
-            self._("选择音频的主要语言，自动检测可能不够准确"),
+            "", # Description will be set by _update_language_card_state
             languages_display, # 使用翻译后的列表
             self.transcription_group
         )
@@ -875,6 +890,10 @@ class SettingsView(ScrollArea):
         # 从枚举或ConfigItem获取实际值用于发布
         value_to_publish = new_value.value if hasattr(new_value, 'value') else new_value
         logger.debug(f"Setting changed: key={config_key}, new_value={value_to_publish}")
+
+        if config_key == "model_name":
+            self._update_language_card_state(value_to_publish)
+
         # 调用 ConfigService 的发布方法
         if hasattr(self, 'config_service') and hasattr(self.config_service, '_publish_config_change_event'):
             self.config_service._publish_config_change_event(config_key, value_to_publish)
@@ -900,3 +919,20 @@ class SettingsView(ScrollArea):
             # 忽略可能的异常
             pass
 
+    def _update_language_card_state(self, model_name_value: str):
+        """根据当前选择的模型更新语言卡片的状态和描述"""
+        is_distil_model = (model_name_value == ModelSize.DISTIL_LARGE.value)
+
+        if is_distil_model:
+            # 如果是 distil 模型，则设置为自动，禁用并更新描述
+            # 确保在禁用前设置值，以便配置项更新
+            if self.config_service.get_default_language != Language.AUTO:
+                self.config_service.set_default_language(Language.AUTO)
+
+            self.language_card.comboBox.setEnabled(False)
+            self.language_card.setContent(self._("distil模型只适用于英文转录，如需其他语言需要切换模型"))
+        else:
+            # 如果不是 distil 模型，则启用并恢复默认描述
+            self.language_card.comboBox.setEnabled(True)
+            self.language_card.setContent(self._("选择音频内容的主要语言，建议优先使用自动检测"))
+        

@@ -175,7 +175,7 @@ class MainWindow(FluentWindow):
             content=content,
             orient=Qt.Horizontal,
             isClosable=False,
-            duration=1500,
+            duration=3500,
             position=InfoBarPosition.TOP,
             parent=self
         )
@@ -192,7 +192,7 @@ class MainWindow(FluentWindow):
             content=content,
             orient=Qt.Horizontal,
             isClosable=False,
-            duration=1500,
+            duration=3500,
             position=InfoBarPosition.TOP,
             parent=self
         )
@@ -209,7 +209,7 @@ class MainWindow(FluentWindow):
             content=content,
             orient=Qt.Horizontal,
             isClosable=False,
-            duration=1500,
+            duration=5000,
             position=InfoBarPosition.TOP,
             parent=self
         )
@@ -226,7 +226,7 @@ class MainWindow(FluentWindow):
             content=content,
             orient=Qt.Horizontal,
             isClosable=True,
-            duration=2000,
+            duration=5000,
             position=InfoBarPosition.TOP,
             parent=self
         )
@@ -250,7 +250,7 @@ class MainWindow(FluentWindow):
         """切换界面语言并提示用户重启"""
         current_lang = self.config_service.get_ui_language()
         
-        title = self._("语言设置")
+        title = ("")
         if current_lang == "zh_CN":
             new_lang = "en_US"
             content = "Interface language has been switched to English. Restart to take effect."

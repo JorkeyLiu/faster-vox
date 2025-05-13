@@ -540,7 +540,7 @@ class ModelManagementService(QObject):
         ModelSize.BASE.value: "gpustack/faster-whisper-base",
         ModelSize.SMALL.value: "gpustack/faster-whisper-small",
         ModelSize.MEDIUM.value: "gpustack/faster-whisper-medium",
-        ModelSize.LARGE.value: "gpustack/faster-whisper-large-v3",
+        ModelSize.LARGE.value: "gpustack/faster-whisper-large-v2",
         ModelSize.DISTIL_LARGE.value: "gpustack/faster-distil-whisper-large-v2",
     }
     

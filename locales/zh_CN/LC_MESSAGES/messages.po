@@ -42,10 +42,6 @@ msgstr "设置"
 msgid "Faster Vox - 语音转文字工具"
 msgstr "Faster Vox - 语音转文字工具"
 
-#: ui/main_window.py:257
-msgid "语言设置"
-msgstr "语言"
-
 #: ui/components/drop_area.py:93 ui/components/drop_area.py:267
 #: ui/components/drop_area.py:311
 msgid "拖放音频、视频文件或文件夹"
@@ -205,8 +201,8 @@ msgid "语言"
 msgstr "语言"
 
 #: ui/views/settings_view.py:242
-msgid "选择音频的主要语言，自动检测可能不够准确"
-msgstr "选择音频的主要语言，自动检测可能不够准确"
+msgid "选择音频内容的主要语言，建议优先使用自动检测"
+msgstr "选择音频内容的主要语言，建议优先使用自动检测"
 
 #: ui/views/settings_view.py:254
 msgid "输出格式"
@@ -590,3 +586,39 @@ msgstr "已将所有设置恢复为默认值"
 
 msgid "notification.output_dir_reset"
 msgstr "已恢复为默认输出目录设置"
+
+#: ui/views/settings_view.py:919
+msgid "distil模型只适用于英文转录，如需其他语言需要切换模型"
+msgstr "distil模型只适用于英文转录，如需其他语言需要切换模型"
+
+#: ui/views/settings_view.py:221
+msgid "自动检测"
+msgstr "自动检测"
+
+#: ui/views/settings_view.py:221
+msgid "中文"
+msgstr "中文"
+
+#: ui/views/settings_view.py:221
+msgid "英语"
+msgstr "英语"
+
+#: ui/views/settings_view.py:221
+msgid "日语"
+msgstr "日语"
+
+#: ui/views/settings_view.py:221
+msgid "韩语"
+msgstr "韩语"
+
+#: ui/views/settings_view.py:221
+msgid "法语"
+msgstr "法语"
+
+#: ui/views/settings_view.py:221
+msgid "德语"
+msgstr "德语"
+
+#: ui/views/settings_view.py:221
+msgid "西班牙语"
+msgstr "西班牙语"

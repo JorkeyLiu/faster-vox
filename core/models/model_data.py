@@ -16,7 +16,7 @@ class ModelSize(Enum):
     BASE = "base"
     SMALL = "small"
     MEDIUM = "medium"
-    LARGE = "large-v3"
+    LARGE = "large-v2"
     DISTIL_LARGE = "distil-large-v2"
     
     @staticmethod
@@ -48,7 +48,7 @@ class ModelSize(Enum):
         elif name == ModelSize.MEDIUM.value:
             return "medium"
         elif name == ModelSize.LARGE.value:
-            return "large-v3"
+            return "large-v2"
         elif name == ModelSize.DISTIL_LARGE.value:
             return "distil-large-v2"
         else:
