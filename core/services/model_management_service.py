@@ -31,7 +31,8 @@ from core.events.event_types import (
     CudaEnvInstallCompletedEvent, CudaEnvDownloadErrorEvent
 )
 from utils.progress_utils import create_progress_writer
-from core.models.config import APP_ENV_DIR, WHISPER_EXE_PATH
+from core.models.config import APP_ENV_DIR, WHISPER_EXE_PATH # WHISPER_EXE_PATH is absolute
+from core.utils.file_utils import get_resource_path # Added for 7-Zip
 from modelscope.hub.snapshot_download import snapshot_download
 
 class ModelScopeDownloader(QThread):
@@ -337,26 +338,16 @@ class CudaEnvInstaller(QThread):
     def _extract_files(self):
         """使用捆绑的7-Zip解压文件，并实时报告进度"""
         try:
-            # --- 确定应用程序基础路径 (根据打包方式可能需要调整) ---
-            if getattr(sys, 'frozen', False):
-                 # 如果在 PyInstaller 包中运行
-                 app_base_path = Path(sys.executable).parent
-            else:
-                 # 如果作为普通脚本运行
-                 # 假设此文件位于 core/services/ 目录下，需要向上两级到项目根目录
-                 app_base_path = Path(__file__).resolve().parent.parent.parent
-
-            # --- 构建捆绑 7-Zip 的完整路径 (指向命令行版本) ---
-            bundled_7z_path = app_base_path / "resources" / "7-Zip-Zstandard64" / "7z.exe"
+            # --- 使用 get_resource_path 获取捆绑的 7-Zip 路径 ---
+            seven_zip_exe_relative_path = "resources/7-Zip-Zstandard64/7z.exe"
+            seven_zip_exe = get_resource_path(seven_zip_exe_relative_path)
 
             # --- 检查捆绑的 7z 是否存在 ---
-            if not bundled_7z_path.is_file():
-                # 更新错误消息中的文件名和路径
-                error_msg = f"捆绑的 7-Zip 命令行可执行文件未找到: {bundled_7z_path}。请确保 'resources/7-Zip-Zstandard64/' 目录下包含 '7z.exe'。"
+            if not Path(seven_zip_exe).is_file():
+                error_msg = f"捆绑的 7-Zip 命令行可执行文件未找到: {seven_zip_exe} (期望相对路径: {seven_zip_exe_relative_path})。请确保它已包含在打包资源中。"
                 logger.error(error_msg)
                 raise FileNotFoundError(error_msg)
 
-            seven_zip_exe = str(bundled_7z_path)
             logger.info(f"找到捆绑的 7-Zip: {seven_zip_exe}")
 
             # --- 定位需要解压的文件 ---

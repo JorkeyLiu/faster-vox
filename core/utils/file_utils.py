@@ -7,12 +7,27 @@
 
 import os
 import platform
+import sys # Added for PyInstaller _MEIPASS check
 import subprocess
 from typing import List, Set, Optional
 from loguru import logger
 from pathlib import Path
 
 from core.models.config import SUPPORTED_AUDIO_FORMATS, SUPPORTED_VIDEO_FORMATS, SUPPORTED_EXPORT_FORMATS
+
+def get_resource_path(relative_path: str) -> str:
+    """获取资源的绝对路径，兼容开发环境和打包后的环境。"""
+    try:
+        # PyInstaller 创建的临时文件夹 _MEIPASS
+        # 对于 --onedir 模式, sys._MEIPASS 是 dist/appname 目录
+        # 对于 --onefile 模式, sys._MEIPASS 是解压的临时目录
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # 不在 PyInstaller 打包环境中（例如开发环境）
+        # 此工具函数位于 core/utils/file_utils.py
+        # 则项目根目录是其上两级
+        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return os.path.join(base_path, relative_path)
 
 def get_file_extension(file_path: str) -> str:
     """获取文件扩展名（不带点）

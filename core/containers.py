@@ -7,6 +7,7 @@
 
 import os
 from dependency_injector import containers, providers
+from core.utils.file_utils import get_resource_path
 
 # 导入服务类
 from core.services.config_service import ConfigService
@@ -17,7 +18,7 @@ from core.services.audio_service import AudioService
 from core.whisper_manager import WhisperManager
 from core.services.notification_service import NotificationService
 from core.services.error_handling_service import ErrorHandlingService
-from core.models.config import cfg
+from core.models.config import cfg, APP_MODELS_DIR # Added APP_MODELS_DIR
 from core.events import event_bus
 from core.services.environment_service import EnvironmentService
 from .i18n import initialize_translation
@@ -64,9 +65,14 @@ class AppContainer(containers.DeclarativeContainer):
     config = providers.Configuration(name="config")
     
     # 设置默认配置值
+    # model_dir is now managed by AppConfig's model_path default (APP_MODELS_DIR)
+    # and ModelManagementService which uses config_service.get_model_directory().
+    # No need to set a default for "model_dir" here in the container's config provider directly,
+    # as it would override or conflict with the AppConfig logic.
+    # The ConfigService will provide the correct model directory based on AppConfig.
     config.from_dict({
         "general": {
-            "model_dir": os.path.join(os.getcwd(), "models")
+            # "model_dir": str(APP_MODELS_DIR) # Corrected: model_dir default comes from AppConfig
         },
         "ui": {
             "theme": "light"

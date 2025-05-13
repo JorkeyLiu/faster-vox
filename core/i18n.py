@@ -16,13 +16,13 @@
         pybabel compile -d locales
 """
 
-import os
 import gettext
 from loguru import logger
 from .services.config_service import ConfigService
 from .models.config import cfg
 from .services.error_handling_service import ErrorHandlingService
 from .models.error_model import ErrorCategory, ErrorPriority
+from .utils.file_utils import get_resource_path
 
 def initialize_translation(config_service: ConfigService, error_service: ErrorHandlingService):
     """
@@ -35,8 +35,7 @@ def initialize_translation(config_service: ConfigService, error_service: ErrorHa
         callable: gettext 翻译函数 (_) 或一个空操作 lambda 函数。
     """
     lang_code = config_service.get_ui_language()
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    locales_dir = os.path.join(project_root, 'locales')
+    locales_dir = get_resource_path('locales')
     
     logger.info(f"Initializing gettext for language: {lang_code}, locales_dir: {locales_dir}")
 

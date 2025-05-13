@@ -38,9 +38,11 @@ APP_CONFIG_DIR = APP_ROOT_DIR
 APP_MODELS_DIR = APP_ROOT_DIR / "models"
 APP_LOGS_DIR = APP_ROOT_DIR / "logs"
 APP_CACHE_DIR = APP_ROOT_DIR / "cache"
-APP_ENV_DIR = APP_ROOT_DIR / "env"
+APP_ENV_DIR = APP_ROOT_DIR / "env" # This might still be used for other environment specific, non-packaged files
 
-WHISPER_EXE_PATH = APP_ENV_DIR / "Faster-Whisper-XXL" / "faster-whisper-xxl.exe"
+# WHISPER_EXE_PATH should be an absolute path constructed from APP_ENV_DIR
+# as it's downloaded at runtime to a user-specific directory.
+WHISPER_EXE_PATH = APP_ENV_DIR / "faster-whisper-xxl" / "faster-whisper-xxl.exe"
 
 # 根据操作系统确定默认文档目录
 if system == "Windows":

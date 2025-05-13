@@ -21,7 +21,7 @@ from loguru import logger
 from PySide6.QtCore import QObject, QThread, Signal
 from abc import ABC, abstractmethod
 
-from core.models.config import APP_ENV_DIR, WHISPER_EXE_PATH
+from core.models.config import APP_ENV_DIR, WHISPER_EXE_PATH # WHISPER_EXE_PATH is an absolute path
 from core.models.error_model import ErrorInfo, ErrorCategory, ErrorPriority
 from core.services.config_service import ConfigService
 from core.services.notification_service import NotificationService
@@ -30,6 +30,7 @@ from core.models.transcription_model import TranscriptionParameters
 from core.events import event_bus, EventTypes, TaskStateChangedEvent, WorkerCompletedEvent, WorkerFailedEvent, WorkerCancelledEvent
 
 from core.utils.parser_utils import ProgressCalculator
+# Removed commented out import of get_resource_path as it's confirmed not needed here.
 
 
 class TranscriptionContext:
@@ -558,12 +559,14 @@ class PrecompiledTranscriptionStrategy(TranscriptionStrategy):
         try:
             # 准备输出JSON路径
             temp_json = context.get_temp_json_path()
-
-            whisper_exe = WHISPER_EXE_PATH
+            
+            # WHISPER_EXE_PATH is an absolute path imported from core.models.config
+            # No need for get_resource_path here.
+            whisper_exe = str(WHISPER_EXE_PATH)
             
             # 获取预编译应用路径
             if not os.path.exists(whisper_exe):
-                return False, f"预编译应用不存在: {whisper_exe}", {}
+                return False, f"预编译应用不存在: {whisper_exe}", {} # Removed reference to RELATIVE_WHISPER_EXE_PATH
             
             # 构建命令行参数
             cmd = [
