@@ -56,11 +56,12 @@ def setup_logger(
     log_file = log_dir / log_filename
     
     # 添加控制台处理器
-    logger.add(
-        sys.stderr,
-        level=console_level,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
-    )
+    if sys.stderr:
+        logger.add(
+            sys.stderr,
+            level=console_level,
+            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+        )
     
     # 添加文件处理器
     logger.add(
@@ -74,18 +75,6 @@ def setup_logger(
     )
     
     logger.info("日志系统初始化完成")
-
-
-def get_logger(name: str = None) -> logger:
-    """获取日志记录器
-    
-    Args:
-        name: 日志记录器名称，通常为模块名
-        
-    Returns:
-        logger: 日志记录器实例
-    """
-    return logger.bind(name=name)
 
 
 def log_exception(e: Exception, context: Optional[Dict[str, Any]] = None) -> None:
@@ -128,4 +117,4 @@ def log_performance(operation: str, elapsed_time: float) -> None:
 default_logger = logger
 
 # 为了方便导入，直接导出 logger
-__all__ = ['setup_logger', 'get_logger', 'log_exception', 'log_function_call', 'log_performance', 'logger', 'default_logger']
+__all__ = ['setup_logger', 'log_exception', 'log_function_call', 'log_performance', 'logger', 'default_logger']

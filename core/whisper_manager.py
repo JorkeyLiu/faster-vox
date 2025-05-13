@@ -611,10 +611,15 @@ class PrecompiledTranscriptionStrategy(TranscriptionStrategy):
             cmd.append(str(context.audio_file))
             
             # 执行命令
+            creation_flags = 0
+            if platform.system() == "Windows":
+                creation_flags = subprocess.CREATE_NO_WINDOW
+            
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
+                creationflags=creation_flags
             )
             
             # 添加调试日志
