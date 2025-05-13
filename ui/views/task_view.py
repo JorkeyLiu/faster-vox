@@ -592,7 +592,7 @@ class TaskView(QWidget):
                  event.task_id,
                  event.file_path,
                  translated_initial_status, # 使用翻译后的状态
-                 "00:00" # 初始时长
+                 "--:--" # 初始时长
              )
              # 更新按钮状态 (可以保留，因为列表内容变化可能影响按钮)
              self._update_button_states()

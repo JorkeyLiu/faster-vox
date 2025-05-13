@@ -104,14 +104,14 @@ class TaskTableManager(QObject):
         if action in self.button_callbacks and task_id:
             self.button_callbacks[action](task_id)
     
-    def add_task_to_table(self, task_id: str, file_path: str, status: str, duration: str = "00:00") -> int:
+    def add_task_to_table(self, task_id: str, file_path: str, status: str, duration: str = "--:--") -> int:
         """添加任务到表格
         
         Args:
             task_id: 任务ID
             file_path: 文件路径
             status: 状态文本
-            duration: 时长文本，默认为"00:00"
+            duration: 时长文本，默认为"--:--"
             
         Returns:
             int: 添加的行索引

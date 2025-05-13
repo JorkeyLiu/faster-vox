@@ -327,6 +327,8 @@ class EventTypes:
     TRANSCRIPTION_PROCESS_INFO = "transcription_process_info" # 新增统一事件
     # 音频事件
     AUDIO_EXTRACTED = "audio_extracted"
+    AUDIO_INFO_READY = "audio_info_ready" # 新增
+    AUDIO_INFO_FAILED = "audio_info_failed" # 新增
     
     # 环境事件
     ENVIRONMENT_SETUP_STARTED = "environment_setup_started"
@@ -428,3 +430,17 @@ class TranscriptionProcessInfoEvent(TaskEvent):
     """统一的转录进度与文本事件数据"""
     process_text: str  # 当前处理的文本片段
     progress: float  # 当前任务进度 (0-1)
+
+
+@dataclass
+class AudioInfoReadyEvent(TaskEvent):
+    """音频信息获取成功事件"""
+    file_path: str # 新增
+    audio_info: Dict[str, Any]
+
+
+@dataclass
+class AudioInfoFailedEvent(TaskEvent):
+    """音频信息获取失败事件"""
+    file_path: str # 新增
+    error: str

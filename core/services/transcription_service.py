@@ -31,14 +31,13 @@ from core.services.environment_service import EnvironmentService
 from core.whisper_manager import WhisperManager
 from core.utils.export_utils import export_transcription as export_transcription_util, dict_to_transcription_result
 from core.services.error_handling_service import ErrorHandlingService
-from core.models.environment_model import EnvironmentInfo
 from core.events import (
     event_bus, EventTypes,
     TranscriptionProgressEvent, TranscriptionCompletedEvent, TranscriptionErrorEvent,
     WorkerProgressEvent, WorkerCompletedEvent, WorkerFailedEvent, WorkerCancelledEvent, # 添加新事件
     RequestStartProcessingEvent, RequestCancelProcessingEvent,
     TaskStateChangedEvent, TaskAssignedEvent, TranscriptionStartedEvent, TaskStartedEvent, # 重命名 TaskProcessingStartedEvent
-    EnvironmentStatusEvent
+    EnvironmentStatusEvent, AudioInfoReadyEvent, AudioInfoFailedEvent # 新增导入
 )
 from core.services.task_service import TaskService
 
@@ -133,6 +132,9 @@ class TranscriptionService(QObject):
         
         # 订阅环境状态变更事件
         event_bus.subscribe(EventTypes.ENVIRONMENT_STATUS_CHANGED, self._handle_environment_status_changed)
+        # 新增订阅
+        event_bus.subscribe(EventTypes.AUDIO_INFO_READY, self._handle_audio_info_ready)
+        event_bus.subscribe(EventTypes.AUDIO_INFO_FAILED, self._handle_audio_info_failed)
     
     
     # --- 新的事件处理方法 ---
@@ -496,7 +498,44 @@ class TranscriptionService(QObject):
         # 发布单个任务处理开始事件
         task_started_event = TaskStartedEvent(task_id=task_id, file_path=audio_file)
         event_bus.publish(EventTypes.TASK_STARTED, task_started_event)
+
+        # 异步获取音频信息
+        logger.info(f"任务 {task_id}: 请求获取音频信息: {audio_file}")
+        self.audio_service.get_audio_info(task_id, audio_file)
+        self.task_service.prepare_task(task_id)
         
+        # transcribe_task 现在只负责启动音频信息获取流程
+        # 后续的转录启动逻辑移至 _handle_audio_info_ready
+        return True
+
+    def _handle_audio_info_ready(self, event: AudioInfoReadyEvent):
+        """处理音频信息获取成功事件"""
+        task_id = event.task_id
+        audio_file = event.file_path
+        audio_info = event.audio_info
+
+        if task_id not in self.active_tasks:
+            logger.warning(f"收到已不存在任务 {task_id} 的音频信息，忽略。")
+            return
+
+        logger.info(f"任务 {task_id}: 音频信息获取成功，时长: {audio_info.get('duration', 0.0)}s")
+        audio_duration = audio_info.get("duration", 0.0)
+
+        # 从 active_tasks 中获取模型名称等信息
+        task_details = self.active_tasks.get(task_id)
+        if not task_details: # 双重检查
+            logger.error(f"任务 {task_id} 在处理音频信息时从 active_tasks 中消失。")
+            return
+        
+        model_name = task_details.get("model_name")
+        # 重新获取模型路径，以防在等待期间发生变化（虽然不太可能）
+        model_path = self.model_service.get_model_path(model_name)
+        if not model_path:
+            error_msg = f"无法获取模型路径: {model_name} (在音频信息就绪后)"
+            logger.error(error_msg)
+            self._handle_transcription_error_for_task(task_id, error_msg, {"source": "audio_info_ready_model_path"})
+            return
+
         try:
             # 在任务开始前刷新环境状态，确保使用最新状态
             self.refresh_environment()
@@ -509,80 +548,84 @@ class TranscriptionService(QObject):
                 use_precompiled = False
             else: # 设备是 'cuda' 或 'auto'
                 logger.info(f"任务 {task_id}: 检测到最终设备为 {final_device}，尝试选择最佳策略")
-                # 优先尝试预编译应用进行 GPU 加速
                 if self.environment_info.can_use_gpu_acceleration():
                     use_precompiled = True
                     logger.info(f"任务 {task_id}: 使用预编译应用执行转录 (GPU 加速)")
-                # 如果 GPU 可用但环境未就绪，尝试下载环境，本次任务回退到 Python
                 elif self.environment_info.should_download_cuda_env():
                     logger.info(f"任务 {task_id}: 检测到 GPU 但预编译应用/环境不可用，尝试下载")
                     self._download_cuda_environment()
-                    use_precompiled = False # 本次任务回退到 Python
+                    use_precompiled = False
                     logger.info(f"任务 {task_id}: 回退到 Python 库 (已启动预编译应用/环境下载)")
-                # 其他情况（如非 Windows、预编译应用不可用等）也使用 Python 库
                 else:
                     use_precompiled = False
                     strategy_reason = "非 Windows 平台或预编译应用/环境不可用"
                     logger.info(f"任务 {task_id}: 使用 Python 库执行转录 ({strategy_reason})")
 
-            # 设置预编译标志到转录参数 (此行保留)
-            self.transcription_parameters.use_precompiled = use_precompiled
+            current_transcription_params = TranscriptionParameters(**vars(self.transcription_parameters))
+            current_transcription_params.use_precompiled = use_precompiled
             
-            # 获取音频信息
-            audio_duration = 0.0
-            try:
-                audio_info = self.audio_service.get_audio_info(audio_file)
-                audio_duration = audio_info.get("duration", 0.0) if audio_info else 0.0
-                logger.info(f"获取到音频时长: {audio_duration}秒，传递给WhisperManager")
-            except Exception as e:
-                logger.warning(f"获取音频时长失败: {str(e)}")
-            
-            # 使用Whisper管理器创建转录工作线程 - 直接传递参数对象
             worker = self.whisper_manager.create_transcription_worker(
                 audio_file=audio_file,
-                model_path=model_path,  # 传入模型路径
-                audio_duration=audio_duration,  # 传递音频时长
-                parameters=self.transcription_parameters,  # 直接传递参数对象
+                model_path=model_path,
+                audio_duration=audio_duration,
+                parameters=current_transcription_params, # 使用深拷贝或新实例化的参数对象
                 task_id=task_id,
                 worker_id=f"worker_{task_id}"
             )
             
-            # 保存工作线程引用
             self.active_workers[task_id] = worker
-            
-            # 启动工作线程
             worker.start()
-            logger.info(f"开始转录任务: {task_id}, 模型: {model_name}, 模型路径: {model_path}, 使用预编译: {use_precompiled}")
-            return True
-        
+            logger.info(f"任务 {task_id}: 音频信息就绪，正式开始转录, 模型: {model_name}, 使用预编译: {use_precompiled}")
+
+            # 更新任务状态为处理中
+            if self.task_service:
+                self.task_service.start_task(task_id)
+
         except Exception as e:
-            logger.error(f"启动转录任务失败: {task_id}, 错误: {str(e)}")
-            
-            # 记录错误
-            if self.error_service:
-                error_info = ErrorInfo(
-                    message=f"启动转录任务失败: {str(e)}",
-                    category=ErrorCategory.AUDIO,
-                    priority=ErrorPriority.HIGH,
-                    code="TRANSCRIPTION_START_FAILED",
-                    details={"task_id": task_id, "audio_file": audio_file},
-                    source="TranscriptionService.transcribe_task",
-                    user_visible=True
-                )
-                self.error_service.handle_error(error_info)
-            
-            # 从活动任务和工作线程中移除
-            self.active_tasks.pop(task_id, None)
-            self.active_workers.pop(task_id, None)
-            
-            # 发布错误事件
-            event_data = TranscriptionErrorEvent(
-                task_id=task_id,
-                error=f"启动转录任务失败: {str(e)}"
-            )
-            event_bus.publish(EventTypes.TRANSCRIPTION_ERROR, event_data)
-            
-            return False
+            logger.error(f"任务 {task_id}: 在音频信息就绪后启动转录失败: {str(e)}")
+            self._handle_transcription_error_for_task(task_id, f"启动转录失败: {str(e)}", {"source": "audio_info_ready_start_worker"})
+
+    def _handle_audio_info_failed(self, event: AudioInfoFailedEvent):
+        """处理音频信息获取失败事件"""
+        task_id = event.task_id
+        error_message = event.error
+
+        if task_id not in self.active_tasks:
+            logger.warning(f"收到已不存在任务 {task_id} 的音频信息失败事件，忽略。")
+            return
+
+        logger.error(f"任务 {task_id}: 音频信息获取失败: {error_message}")
+        self._handle_transcription_error_for_task(task_id, f"获取音频信息失败: {error_message}", {"source": "audio_info_failed"})
+
+    def _handle_transcription_error_for_task(self, task_id: str, error_msg: str, details: Dict[str, Any]):
+        """统一处理转录任务中的错误"""
+        logger.error(f"任务 {task_id} 发生错误: {error_msg}, 详情: {details}")
+        
+        # 更新TaskService中的任务状态
+        if self.task_service:
+            self.task_service.mark_task_as_failed(task_id, error=error_msg)
+
+        # 发布错误事件
+        event_data = TranscriptionErrorEvent(
+            task_id=task_id,
+            error=error_msg,
+            details=details
+        )
+        event_bus.publish(EventTypes.TRANSCRIPTION_ERROR, event_data)
+        
+        # 清理活动任务和工作线程引用
+        self.active_tasks.pop(task_id, None)
+        self.active_workers.pop(task_id, None) # 如果工作线程已创建
+        
+        # 检查是否需要卸载模型
+        self._check_and_unload_model()
+
+    # 原有的 transcribe_task 方法中的主要异常处理逻辑已移至
+    # _handle_audio_info_ready 和 _handle_audio_info_failed 方法中，
+    # 并通过 _handle_transcription_error_for_task 进行统一处理。
+    # 因此，transcribe_task 方法末尾的旧的、大的 try-except 块的残留部分
+    # (特别是导致 Pylance 错误的未定义变量和缩进错误的部分) 在此被移除。
+    # transcribe_task 的主要职责现在是启动音频信息的异步获取。
 
     def cancel_process(self, task_id: str):
         """取消转录处理
@@ -882,6 +925,9 @@ class TranscriptionService(QObject):
             event_bus.unsubscribe(EventTypes.MODEL_LOADED, self._handle_model_loaded)
             event_bus.unsubscribe(EventTypes.CONFIG_CHANGED, self._on_config_changed)
             event_bus.unsubscribe(EventTypes.ENVIRONMENT_STATUS_CHANGED, self._handle_environment_status_changed)
+            # 新增取消订阅
+            event_bus.unsubscribe(EventTypes.AUDIO_INFO_READY, self._handle_audio_info_ready)
+            event_bus.unsubscribe(EventTypes.AUDIO_INFO_FAILED, self._handle_audio_info_failed)
         except Exception as e:
             # 忽略可能的异常
             logger.debug(f"取消事件订阅时发生异常: {str(e)}")

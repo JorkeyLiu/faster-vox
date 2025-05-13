@@ -11,13 +11,45 @@ import hashlib
 import time
 import tempfile
 import json
+import platform # 新增导入
 from pathlib import Path
 from typing import List, Dict, Optional, Any
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, QThread, Signal # 新增导入 QThread, Signal
 from loguru import logger
 from core.utils.file_utils import get_supported_media_extensions
 from core.models.error_model import ErrorInfo, ErrorCategory, ErrorPriority
 from core.events import event_bus, EventTypes, AudioExtractedEvent
+from core.events.event_types import AudioInfoReadyEvent, AudioInfoFailedEvent
+
+
+class AudioInfoFetcherThread(QThread):
+    """异步获取音频信息的线程"""
+    audio_info_ready = Signal(str, str, dict)  # task_id, file_path, info_dict
+    audio_info_failed = Signal(str, str, str)   # task_id, file_path, error_message
+
+    def __init__(self, task_id: str, file_path: str, audio_service_instance, parent=None):
+        super().__init__(parent)
+        self.task_id = task_id
+        self.file_path = file_path
+        self.audio_service_instance = audio_service_instance # 需要 AudioService 实例来调用同步方法
+
+    def run(self):
+        try:
+            logger.debug(f"AudioInfoFetcherThread started for task: {self.task_id}, file: {self.file_path}")
+            # 调用 AudioService 中的同步获取方法
+            info_dict = self.audio_service_instance._fetch_audio_info_sync(self.file_path)
+            if info_dict:
+                self.audio_info_ready.emit(self.task_id, self.file_path, info_dict)
+                logger.debug(f"AudioInfoFetcherThread success for task: {self.task_id}")
+            else:
+                error_msg = f"无法获取音频信息: {self.file_path}"
+                self.audio_info_failed.emit(self.task_id, self.file_path, error_msg)
+                logger.warning(f"AudioInfoFetcherThread failed (no info) for task: {self.task_id}, error: {error_msg}")
+        except Exception as e:
+            error_msg = f"获取音频信息时发生错误: {str(e)}"
+            logger.error(f"AudioInfoFetcherThread exception for task: {self.task_id}, error: {error_msg}")
+            self.audio_info_failed.emit(self.task_id, self.file_path, error_msg)
+
 
 class AudioService(QObject):
     """音频服务类，负责音频处理和转换"""
@@ -31,6 +63,7 @@ class AudioService(QObject):
         """
         super().__init__(parent)
         self.error_service = error_service
+        self._active_audio_info_fetchers: Dict[str, AudioInfoFetcherThread] = {}
     
     # ----------------------
     # 公共方法
@@ -68,50 +101,53 @@ class AudioService(QObject):
                 logger.error(error_msg)
         return result
     
-    def get_audio_info(self, file_path: str) -> Optional[Dict[str, Any]]:
-        """获取音频文件信息
+    def get_audio_info(self, task_id: str, file_path: str) -> None:
+        """异步获取音频文件信息
         
         Args:
+            task_id: 任务ID
             file_path: 音频文件路径
-            
-        Returns:
-            Dict[str, Any]: 包含音频信息的字典，如果获取失败则返回None
         """
-        try:
-            result = self._get_audio_info(file_path)
-            if result is None:
-                error_msg = f"获取音频信息失败: {file_path}"
-                if self.error_service:
-                    error_info = ErrorInfo(
-                        message=error_msg,
-                        category=ErrorCategory.AUDIO,
-                        priority=ErrorPriority.MEDIUM,
-                        code="AUDIO_INFO_FAILED",
-                        details={"file_path": file_path},
-                        source="AudioService.get_audio_info",
-                        user_visible=True
-                    )
-                    self.error_service.handle_error(error_info)
-                else:
-                    logger.error(error_msg)
-            return result
-        except Exception as e:
-            error_msg = f"获取音频信息失败: {str(e)}"
-            if self.error_service:
-                self.error_service.handle_exception(
-                    e,
-                    ErrorCategory.AUDIO,
-                    ErrorPriority.MEDIUM,
-                    "AudioService.get_audio_info",
-                    user_visible=True
-                )
-            else:
-                logger.error(error_msg)
-            return None
-    
+        if task_id in self._active_audio_info_fetchers:
+            logger.warning(f"任务 {task_id} 已在获取音频信息中，忽略重复请求。")
+            return
+
+        logger.info(f"开始异步获取任务 {task_id} 的音频信息: {file_path}")
+        fetcher = AudioInfoFetcherThread(task_id, file_path, self)
+        fetcher.audio_info_ready.connect(self._on_audio_info_ready)
+        fetcher.audio_info_failed.connect(self._on_audio_info_failed)
+        # 线程结束后自动清理
+        fetcher.finished.connect(lambda: self._active_audio_info_fetchers.pop(task_id, None))
+        
+        self._active_audio_info_fetchers[task_id] = fetcher
+        fetcher.start()
+
+    def _on_audio_info_ready(self, task_id: str, file_path: str, info: dict):
+        """处理音频信息获取成功"""
+        logger.info(f"任务 {task_id} 音频信息获取成功: {file_path}")
+        # 导入新的事件类型 (确保在文件顶部导入)
+        event_bus.publish(EventTypes.AUDIO_INFO_READY, AudioInfoReadyEvent(task_id=task_id, file_path=file_path, audio_info=info))
+
+    def _on_audio_info_failed(self, task_id: str, file_path: str, error_message: str):
+        """处理音频信息获取失败"""
+        logger.error(f"任务 {task_id} 音频信息获取失败: {file_path}, 错误: {error_message}")
+        # 导入新的事件类型 (确保在文件顶部导入)
+        event_bus.publish(EventTypes.AUDIO_INFO_FAILED, AudioInfoFailedEvent(task_id=task_id, file_path=file_path, error=error_message))
+        if self.error_service:
+            error_info = ErrorInfo(
+                message=f"获取文件 '{Path(file_path).name}' 音频信息失败: {error_message}",
+                category=ErrorCategory.AUDIO,
+                priority=ErrorPriority.MEDIUM,
+                code="AUDIO_INFO_ASYNC_FAILED",
+                details={"task_id": task_id, "file_path": file_path, "error": error_message},
+                source="AudioService._on_audio_info_failed",
+                user_visible=True
+            )
+            self.error_service.handle_error(error_info)
+
     def convert_audio(
-        self, 
-        input_path: str, 
+        self,
+        input_path: str,
         output_path: str, 
         sample_rate: int = 16000,
         channels: int = 1,
@@ -312,11 +348,15 @@ class AudioService(QObject):
             bool: 如果FFmpeg可用返回True，否则返回False
         """
         try:
+            creation_flags = 0
+            if platform.system() == "Windows":
+                creation_flags = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
-                ["ffmpeg", "-version"], 
-                check=True, 
+                ["ffmpeg", "-version"],
+                check=True,
                 capture_output=True,
-                text=False  # 使用二进制模式
+                text=False,  # 使用二进制模式
+                creationflags=creation_flags
             )
             # 不需要检查输出内容，只需要确认命令执行成功
             return True
@@ -325,8 +365,8 @@ class AudioService(QObject):
             return False
 
 
-    def _get_audio_info(self, file_path: str) -> Optional[Dict[str, Any]]:
-        """获取音频文件信息
+    def _fetch_audio_info_sync(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """同步获取音频文件信息 (供内部线程调用)
         
         Args:
             file_path: 音频文件路径
@@ -345,6 +385,7 @@ class AudioService(QObject):
         """
         try:
             if not self._check_ffmpeg():
+                logger.warning("FFmpeg check failed in _fetch_audio_info_sync")
                 return None
             
             # 检查文件是否存在
@@ -362,11 +403,17 @@ class AudioService(QObject):
                 file_path
             ]
             
+            creation_flags = 0
+            if platform.system() == "Windows":
+                creation_flags = subprocess.CREATE_NO_WINDOW
+            
+            logger.debug(f"Executing ffprobe: {' '.join(cmd)}")
             result = subprocess.run(
                 cmd,
                 check=True,
                 capture_output=True,
-                text=False  # 使用二进制模式
+                text=False,  # 使用二进制模式
+                creationflags=creation_flags # 添加窗口抑制标志
             )
             
             # 显式解码输出
@@ -450,11 +497,15 @@ class AudioService(QObject):
             
             logger.info(f"转换音频: {input_path} -> {output_path}")
             
+            creation_flags = 0
+            if platform.system() == "Windows":
+                creation_flags = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
-                cmd, 
-                check=True, 
+                cmd,
+                check=True,
                 capture_output=True,
-                text=False  # 使用二进制模式
+                text=False,  # 使用二进制模式
+                creationflags=creation_flags
             )
             
             # 如果出错，记录错误信息
@@ -534,11 +585,15 @@ class AudioService(QObject):
                 
                 logger.info(f"分割音频: {start_time}s - {end_time}s -> {output_path}")
                 
+                creation_flags = 0
+                if platform.system() == "Windows":
+                    creation_flags = subprocess.CREATE_NO_WINDOW
                 result = subprocess.run(
-                    cmd, 
-                    check=True, 
+                    cmd,
+                    check=True,
                     capture_output=True,
-                    text=False  # 使用二进制模式
+                    text=False,  # 使用二进制模式
+                    creationflags=creation_flags
                 )
                 
                 # 如果出错，记录错误信息
@@ -632,11 +687,15 @@ class AudioService(QObject):
             logger.info(f"从视频提取音频: {video_path} -> {output_path}")
             
             # 执行命令并捕获输出，使用二进制模式
+            creation_flags = 0
+            if platform.system() == "Windows":
+                creation_flags = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
-                cmd, 
-                check=True, 
+                cmd,
+                check=True,
                 capture_output=True,
-                text=False  # 使用二进制模式避免编码问题
+                text=False,  # 使用二进制模式避免编码问题
+                creationflags=creation_flags
             )
             
             # 如果有错误输出，记录到日志

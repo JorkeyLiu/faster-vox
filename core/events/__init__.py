@@ -40,6 +40,8 @@ from core.events.event_types import (
     ModelEvent,
     EventTypes,
     ConfigChangedEvent, # 添加 ConfigChangedEvent
+    AudioInfoReadyEvent, # 新增导出
+    AudioInfoFailedEvent, # 新增导出
 )
 
 # 创建全局事件总线实例
@@ -81,4 +83,6 @@ __all__ = [
     'ModelEvent',
     'EventTypes',
     'ConfigChangedEvent', # 添加 ConfigChangedEvent
+    'AudioInfoReadyEvent', # 新增导出
+    'AudioInfoFailedEvent', # 新增导出
 ]
