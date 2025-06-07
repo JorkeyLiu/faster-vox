@@ -25,7 +25,8 @@ from core.events import (
     TaskTimerUpdatedEvent, TaskAssignedEvent
 )
 from core.services.audio_service import AudioService
-from core.utils.file_utils import is_supported_media_file, FileSystemUtils, get_files_from_folder
+from core.utils import file_utils # 导入整个file_utils模块
+from core.utils.file_utils import is_supported_media_file, FileSystemUtils, get_files_from_folder # 保持原有导入，但现在可以直接使用file_utils.get_file_extension
 from core.services.config_service import ConfigService
 
 class TaskService(QObject):
@@ -571,7 +572,7 @@ class TaskService(QObject):
                         )
             # 如果是文件，检查是否支持
             elif os.path.isfile(path):
-                ext = os.path.splitext(path)[1].lower()
+                ext = file_utils.get_file_extension(path) # 使用file_utils中的方法获取不带点的扩展名
                 if ext in supported_extensions:
                     valid_files.append(path)
                     logger.debug(f"添加有效文件: {path}")

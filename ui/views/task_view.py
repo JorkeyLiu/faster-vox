@@ -35,7 +35,7 @@ from qfluentwidgets import (
 )
 
 from core.models.model_data import ModelData
-from core.utils.file_utils import FileSystemUtils, get_supported_media_extensions
+from core.utils.file_utils import FileSystemUtils, get_supported_media_extensions, get_file_extension
 from core.models.notification_model import NotificationTitle, NotificationContent
 from core.models.task_model import ProcessStatus
 from core.models.config import cfg
@@ -415,9 +415,33 @@ class TaskView(QWidget):
     
     def dragEnterEvent(self, event):
         """拖拽进入事件"""
-        # 只接受文件拖拽
+        # 检查是否包含文件
         if event.mimeData().hasUrls():
-            event.acceptProposedAction()
+            # 检查是否有支持的文件或文件夹
+            has_valid_item = False
+            
+            for url in event.mimeData().urls():
+                file_path = url.toLocalFile()
+                
+                # 检查是否是文件或目录
+                if os.path.isfile(file_path):
+                    # 如果是文件，检查是否有效
+                    ext = get_file_extension(file_path)
+                    if ext in get_supported_media_extensions():
+                        has_valid_item = True
+                        break
+                elif os.path.isdir(file_path):
+                    # 目录始终接受
+                    has_valid_item = True
+                    break
+            
+            if has_valid_item:
+                # 接受事件
+                event.acceptProposedAction()
+                return
+        
+        # 如果没有支持的文件，忽略事件
+        event.ignore()
     
     def dragMoveEvent(self, event):
         """拖拽移动事件"""

@@ -53,10 +53,10 @@ else:  # Linux 和其他系统
     APP_DEFAULT_DOC_DIR = str(Path.home() / "Documents")
 
 # 支持的音频格式（文件扩展名，包含点）
-SUPPORTED_AUDIO_FORMATS = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.wma']
+SUPPORTED_AUDIO_FORMATS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma']
 
 # 支持的视频格式（文件扩展名，包含点）
-SUPPORTED_VIDEO_FORMATS = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm']
+SUPPORTED_VIDEO_FORMATS = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm']
 
 # 支持的导出格式（文件扩展名，包含点）
 SUPPORTED_EXPORT_FORMATS = ['.srt', '.vtt', '.txt', '.json', '.tsv']

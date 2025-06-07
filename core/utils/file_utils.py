@@ -62,8 +62,7 @@ def is_supported_video_file(file_path: str) -> bool:
     Returns:
         bool: 是否支持
     """
-    video_extensions = {'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm'}
-    return get_file_extension(file_path) in video_extensions
+    return get_file_extension(file_path) in SUPPORTED_VIDEO_FORMATS
 
 
 def is_supported_audio_file(file_path: str) -> bool:
@@ -75,8 +74,7 @@ def is_supported_audio_file(file_path: str) -> bool:
     Returns:
         bool: 是否支持
     """
-    audio_extensions = {'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma'}
-    return get_file_extension(file_path) in audio_extensions
+    return get_file_extension(file_path) in SUPPORTED_AUDIO_FORMATS
 
 def is_supported_export_file(file_path: str) -> bool:
     """检查文件是否是支持的导出格式
